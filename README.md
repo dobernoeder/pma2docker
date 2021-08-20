@@ -35,4 +35,4 @@ Thats it! No magic, just code!
 
 ## Things to keep in mind
 - The command *docker manifest* is still experimental, you may be careful using it and this script
-- You need to enable experimental features to use *docker manifest* command, just read the (official documentation)[https://docs.docker.com/engine/reference/commandline/manifest/]
+- You need to enable experimental features to use *docker manifest* command, just read the [official documentation](https://docs.docker.com/engine/reference/commandline/manifest/)
