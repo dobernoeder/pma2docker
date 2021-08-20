@@ -1,0 +1,79 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+  echo "Usage: pma2docker SOURCE_IMAGE DOCKER_TARGET_IMAGE_WITH_TAG"
+  exit 1
+fi
+
+LIST_OF_PLATFORM_IMAGES=""
+
+# Parse Variables from Parameter List
+SOURCE_IMAGE=${1}
+DOCKER_TARGET_IMAGE=${2}
+
+## Pre-Checks for Parameter
+if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
+  echo "NOTICE: It looks like you did not specify a tag on source file. Asume 'latest' as tag."
+  SOURCE_IMAGE="$SOURCE_IMAGE:latest"
+fi
+
+if [ $(basename $DOCKER_TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]; then
+  echo "NOTICE: It looks like you did not specify a tag on target file. Asume 'latest' as tag."
+  DOCKER_TARGET_IMAGE="$DOCKER_TARGET_IMAGE:latest"
+fi
+
+
+# Check for Manifests in Image
+NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length')
+
+re='^[0-9]+$'
+if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
+  echo "It looks like the Source Docker-Image is not suitable for this action."
+  echo "It either does not exist or there was an error checking the provided Image."
+  exit 1
+fi
+
+if [ $NR_OF_MANIFESTS -eq 0 ]; then
+  echo "It looks like the Source Docker-Image is not suitable for this action."
+  echo "Please provide an existing multi architecture image. You can only copy existing multi-arch images!"
+  exit 1
+fi
+
+
+# Cycle through all Manifests in the manifest of the Manifest-List
+for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
+do
+  # Get Information for Manifest
+  manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
+  digest=$(echo $manifest | jq -r '.digest')
+  arch=$(echo $manifest | jq -r '.platform.architecture')
+
+  # Check if we have a variant for an architecture, for example arm/v7
+  if [ $(echo $manifest | jq -r '.platform.variant') != "null" ]; then
+    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+  fi
+
+  PLATFORM_TARGET_IMAGE="$DOCKER_TARGET_IMAGE""-""$arch"
+  if [ ! -z "$arch" ] && [ ! -z "$digest" ]; then
+    docker pull "$SOURCE_IMAGE""@""$digest"
+    docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
+    docker push "$PLATFORM_TARGET_IMAGE"
+    LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
+  fi;
+
+  # Reset values for $arch and $digest
+  arch=""
+  digest=""
+done;
+
+# Check for existing manifest and delete it before creating new one
+check=$(docker manifest inspect "$DOCKER_TARGET_IMAGE")
+
+if [ $? -eq "0" ]; then
+  docker manifest rm "$$DOCKER_TARGET_IMAGE"  2>/dev/null
+fi
+
+docker manifest create $DOCKER_TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+
+echo "Pushing Image to docker ..."
+docker manifest push "$DOCKER_TARGET_IMAGE"
