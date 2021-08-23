@@ -17,7 +17,7 @@ function usage(){
   echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <DOCKER_TARGET_IMAGE_WITH_TAG>"
   echo " "
   echo "Options:"
-  echo "  -s, --only-single-images  - Push only the single images with prefix, e.g. *-amd64, *-arm64, *-armv7"
+  echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
