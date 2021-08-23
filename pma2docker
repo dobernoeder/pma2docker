@@ -1,15 +1,42 @@
 #!/bin/bash
+VERSION=1.0.1
+ONLY_SINGLE_IMAGES=0
 
-if [ $# -ne 2 ]; then
-  echo "Usage: pma2docker SOURCE_IMAGE DOCKER_TARGET_IMAGE_WITH_TAG"
+function usage(){
+  echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <DOCKER_TARGET_IMAGE_WITH_TAG>"
+  echo " "
+  echo "Options:"
+  echo "  -s, --only-single-images  - Push only the single images with prefix, e.g. *-amd64, *-arm64, *-armv7"
+  echo "      --help                - Show this info"
+  echo "      --versoin             - Show the version of this script"
+}
+
+function version(){
+  echo "pma2docker v.$VERSION"
+}
+
+cnt=0
+for arg in "$@"; do
+  cnt=$(( $cnt+1 ))
+  if [[ "$arg" == "--version" ]]; then version; exit; fi;
+  if [[ "$arg" == "--help" ]];    then usage;   exit; fi;
+  if [[ "$arg" == "--only-single-images" ]] || [[ "$arg" == "-s" ]]; then ONLY_SINGLE_IMAGES=1; continue; fi;
+  if [[ "$cnt" == $(( "$#" -1 )) ]]; then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]]; then TARGET_IMAGE="$arg"; continue; fi;
+  echo "Unknown parameter: $arg"
+  echo " "
+  usage
+  exit 1
+done
+
+if [ $# -lt 2 ]; then
+  usage
   exit 1
 fi
 
+
 LIST_OF_PLATFORM_IMAGES=""
 
-# Parse Variables from Parameter List
-SOURCE_IMAGE=${1}
-TARGET_IMAGE=${2}
 
 ## Pre-Checks for Parameter
 if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
@@ -99,6 +126,7 @@ do
 
   PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
   if [ ! -z "$arch" ] && [ ! -z "$digest" ]; then
+    echo " $arch ---------------------------------------------------------------------------------------"
     docker pull "$SOURCE_IMAGE""@""$digest"
     docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
     docker push "$PLATFORM_TARGET_IMAGE"
@@ -110,14 +138,19 @@ do
   digest=""
 done;
 
-# Check for existing manifest and delete it before creating new one
-check=$(docker manifest inspect "$TARGET_IMAGE")
+# Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
+echo " MULTI-ARCH Upload ---------------------------------------------------------------------------"
+if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]]; then
+  check=$(docker manifest inspect "$TARGET_IMAGE")
 
-if [ $? -eq "0" ]; then
-  docker manifest rm "$TARGET_IMAGE"  2>/dev/null
-fi
+  if [ $? -eq "0" ]; then
+    docker manifest rm "$TARGET_IMAGE"  2>/dev/null
+  fi
 
-docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+  docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
 
-echo "Pushing Image to docker ..."
-docker manifest push "$TARGET_IMAGE"
+  echo "Pushing Image to docker ..."
+  docker manifest push "$TARGET_IMAGE"
+else
+  echo " --> SKIP Multi-Architecture Upload due to Parameter --only-single-images"
+fi;
