@@ -33,6 +33,8 @@ function version(){
 cnt=0
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
+  if [[ "$cnt" == $(( "$#" -1 )) ]]; then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]]; then TARGET_IMAGE="$arg"; continue; fi;
   if [[ "$SKIP_ITEM" == "1" ]]; then SKIP_ITEM="0"; continue; fi
   if [[ "$arg" == "--version" ]]; then version; exit; fi;
   if [[ "$arg" == "--help" ]];    then usage;   exit; fi;
@@ -41,8 +43,6 @@ for arg in "$@"; do
   if [[ "$arg" == "--source-password" ]]; then SOURCE_PASSWORD="$arg"; SKIP_ITEM="1"; continue; fi;
   if [[ "$arg" == "--target-user" ]]; then TARGET_USER="$arg"; SKIP_ITEM="1"; continue; fi;
   if [[ "$arg" == "--target-password" ]]; then TARGET_PASSWORD="$arg"; SKIP_ITEM="1"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -1 )) ]]; then SOURCE_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]]; then TARGET_IMAGE="$arg"; continue; fi;
   echo "Unknown parameter: $arg"
   echo " "
   usage
