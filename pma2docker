@@ -43,22 +43,24 @@ fi
 # Check if source images are Docker Images or Images from a custom repository
 docker_creds=$(cat ~/.docker/config.json | jq ".auths | keys" | grep -v "\[" | grep -v "\]" | tr -d ' ' | tr -d ',' | tr -d '"' | sed 's/https:\/\///g' | cut -d'/' -f1)
 
-docker manifest inspect "docker.io/$SOURCE_REPOSITORY"  > /dev/null 2>&1
+docker manifest inspect "docker.io/"$SOURCE_IMAGE > /dev/null 2>&1
 SOURCE_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
-docker manifest inspect "docker.io/$TARGET_REPOSITORY"  > /dev/null 2>&1
+docker manifest inspect "docker.io/"$TARGET_IMAGE > /dev/null 2>&1
 TARGET_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
 
-if [[ $SOURCE_IS_DOCKER = "0" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+
+if [[ $SOURCE_IS_DOCKER = "1" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
   SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
 fi
-if [[ $TARGET_IS_DOCKER = "0" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+if [[ $TARGET_IS_DOCKER = "1" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
   TARGET_IMAGE="docker.io/"$TARGET_IMAGE
 fi
+
 
 SOURCE_CREDS=0
 for cred in $docker_creds;
 do
-  if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
+  if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $cred =~ .*docker\.io.* ]]; then
     SOURCE_CREDS=1
     break;
   fi
