@@ -33,21 +33,26 @@ function version(){
 cnt=0
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
-  if [[ "$cnt" == $(( "$#" -1 )) ]]; then SOURCE_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]]; then TARGET_IMAGE="$arg"; continue; fi;
-  if [[ "$SKIP_ITEM" == "1" ]]; then SKIP_ITEM="0"; continue; fi
-  if [[ "$arg" == "--version" ]]; then version; exit; fi;
-  if [[ "$arg" == "--help" ]];    then usage;   exit; fi;
-  if [[ "$arg" == "--only-single-images" ]] || [[ "$arg" == "-s" ]]; then ONLY_SINGLE_IMAGES=1; continue; fi;
-  if [[ "$arg" == "--source-user" ]]; then SOURCE_USER="$arg"; SKIP_ITEM="1"; continue; fi;
-  if [[ "$arg" == "--source-password" ]]; then SOURCE_PASSWORD="$arg"; SKIP_ITEM="1"; continue; fi;
-  if [[ "$arg" == "--target-user" ]]; then TARGET_USER="$arg"; SKIP_ITEM="1"; continue; fi;
-  if [[ "$arg" == "--target-password" ]]; then TARGET_PASSWORD="$arg"; SKIP_ITEM="1"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -1 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
+  if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER=$arg; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER=$arg; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
+  if [[ "$arg" == "--version" ]];                 then version; exit; fi;
+  if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
+  if [[ "$arg" == "--only-single-images" ]] \
+  || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
+  if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
+  if [[ "$arg" == "--source-password" ]];         then NEXT_ITEM="--source-password"; continue; fi;
+  if [[ "$arg" == "--target-user" ]];             then NEXT_ITEM="--target-user"; continue; fi;
+  if [[ "$arg" == "--target-password" ]];         then NEXT_ITEM="--target-password"; continue; fi;
   echo "Unknown parameter: $arg"
   echo " "
   usage
   exit 1
 done
+
 
 if [ $# -lt 2 ]; then
   usage
@@ -133,7 +138,12 @@ if [[ ! -z $SOURCE_USER ]]; then
     read -s -p "Please enter password for Source Repository:" SOURCE_PASSWORD
   fi
   SOURCE_SERVER=$(echo $SOURCE_IMAGE | cut -d'/' -f1)
-  docker login $SOURCE_SERVER
+  docker login $SOURCE_SERVER --username $SOURCE_USER --password $SOURCE_PASSWORD > /dev/null 2>&1
+  if [[ ! $? -eq 0 ]]; then
+    echo " "
+    echo "Login to Source Repository was not successful, leaving..."
+    exit 1
+  fi
 fi;
 
 if [[ ! -z $TARGET_USER ]]; then
@@ -142,7 +152,12 @@ if [[ ! -z $TARGET_USER ]]; then
     read -s -p "Please enter password for Target Repository:" TARGET_PASSWORD
   fi
   TARGET_SERVER=$(echo $TARGET_IMAGE | cut -d'/' -f1)
-  docker login $TARGET_SERVER
+  docker login $TARGET_SERVER --username $TARGET_USER --password $TARGET_PASSWORD > /dev/null 2>&1
+  if [[ ! $? -eq 0 ]]; then
+    echo " "
+    echo "Login to Target Repository was not successful, leaving..."
+    exit 1
+  fi
 fi;
 
 
