@@ -1,6 +1,18 @@
 # Changelog
 Documentation of changes
 
+## [1.1.0] - 2021-08-24
+- Added validity check for source and target repository
+- Added usage information dialog
+- Added handling for parameters
+- Added parameter to upload single architectures only
+- Support login parameter to automatically login to source and target repository
+
+## Changed
+- Improved handling for parameter recognition
+- Updated CHANGELOG.md
+- Updated README.md
+
 ## [1.0.0] - 2021-08-20
 Released first version
 ### Added
@@ -11,6 +23,7 @@ Released first version
 
 
 ## [Original Project]
-The original project can be found at: [github.com](https://github.com/docker-library/hello-world)
-[1.0.0] https://github.com/docker-library/hello-world/commits/master
-  
+The original project can be found at: [github.com](https://github.com/dobernoeder/pma2docker)
+[UPCOMING] https://github.com/dobernoeder/pma2docker/compare/1.1.0...master
+[1.1.0] https://github.com/dobernoeder/pma2docker/compare/1.0.0...1.1.0
+[1.0.0] https://github.com/dobernoeder/pma2docker/commits/1.0.0
