@@ -139,7 +139,7 @@ do
 done;
 
 # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
-echo " MULTI-ARCH Upload ---------------------------------------------------------------------------"
+echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
 if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]]; then
   check=$(docker manifest inspect "$TARGET_IMAGE")
 
