@@ -36,3 +36,33 @@ Thats it! No magic, just code!
 ## Things to keep in mind
 - The command *docker manifest* is still experimental, you may be careful using it and this script
 - You need to enable experimental features to use *docker manifest* command, just read the [official documentation](https://docs.docker.com/engine/reference/commandline/manifest/)
+
+## Examples
+
+Simple usage with source and target repo would just copy the source to the target by downloading each architecture as one image, rebuild manifest list and push it to target server:
+```
+pma2docker dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
+```
+This command would create the following target tags:
+- dobernoeder/newplace:1.1.1     
+- dobernoeder/newplace:1.1.1-amd64
+- dobernoeder/newplace:1.1.1-arm64
+- dobernoeder/newplace:1.1.1-armv7
+
+
+Download multi-arch image and split it to single images with corresponding suffix and upload them seperately to the target repository. Note that dobernoeder/helloworld has three architectures (amd64, arm64, armv7)
+```
+pma2docker -s dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
+```
+This command would create the following target tags:
+- dobernoeder/newplace:1.1.1-amd64
+- dobernoeder/newplace:1.1.1-arm64
+- dobernoeder/newplace:1.1.1-armv7
+
+
+To transfer an image from a public repository to an secured target repository, use the `--target-user` and `--target-password` parameter. If just adding `--target-user` you will get prompted for login password during the process (Not recommended for build pipelines). 
+```
+pma2docker --target-user johndoe --target-password mypassword dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
+```
+
+You can also use `--source-user` and `--source-password` to specify credentials for your source repository.
