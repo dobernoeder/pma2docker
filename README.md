@@ -66,3 +66,4 @@ pma2docker --target-user johndoe --target-password mypassword dobernoeder/hellow
 ```
 
 You can also use `--source-user` and `--source-password` to specify credentials for your source repository.
+You do not need to specify any credentials if your local docker instance is already configured to use the repositories.
