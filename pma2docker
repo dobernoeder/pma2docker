@@ -9,7 +9,7 @@ LIST_OF_PLATFORM_IMAGES=""
 
 # Parse Variables from Parameter List
 SOURCE_IMAGE=${1}
-DOCKER_TARGET_IMAGE=${2}
+TARGET_IMAGE=${2}
 
 ## Pre-Checks for Parameter
 if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
@@ -17,9 +17,9 @@ if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
   SOURCE_IMAGE="$SOURCE_IMAGE:latest"
 fi
 
-if [ $(basename $DOCKER_TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]; then
+if [ $(basename $TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]; then
   echo "NOTICE: It looks like you did not specify a tag on target file. Asume 'latest' as tag."
-  DOCKER_TARGET_IMAGE="$DOCKER_TARGET_IMAGE:latest"
+  TARGET_IMAGE="$TARGET_IMAGE:latest"
 fi
 
 
@@ -40,6 +40,48 @@ if [ $NR_OF_MANIFESTS -eq 0 ]; then
 fi
 
 
+# Check if source images are Docker Images or Images from a custom repository
+docker_creds=$(cat ~/.docker/config.json | jq ".auths | keys" | grep -v "\[" | grep -v "\]" | tr -d ' ' | tr -d ',' | tr -d '"' | sed 's/https:\/\///g' | cut -d'/' -f1)
+
+docker manifest inspect "docker.io/$SOURCE_REPOSITORY"  > /dev/null 2>&1
+SOURCE_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
+docker manifest inspect "docker.io/$TARGET_REPOSITORY"  > /dev/null 2>&1
+TARGET_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
+
+if [[ $SOURCE_IS_DOCKER = "0" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+  SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
+fi
+if [[ $TARGET_IS_DOCKER = "0" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+  TARGET_IMAGE="docker.io/"$TARGET_IMAGE
+fi
+
+SOURCE_CREDS=0
+for cred in $docker_creds;
+do
+  if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
+    SOURCE_CREDS=1
+    break;
+  fi
+done;
+
+TARGET_CREDS=0
+for cred in $docker_creds;
+do
+  if [[ $TARGET_IMAGE =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
+    TARGET_CREDS=1
+    break;
+  fi
+done;
+
+# Validate checks for Repo-Images
+if [[ $SOURCE_CREDS == 0 ]]; then
+  echo "WARNING: There are no credentials to login to source repository, you may need to login to access the repo."
+fi
+if [[ $TARGET_CREDS == 0 ]]; then
+  echo "WARNING: There are no credentials to login to target repository, you may need to login to write to the repo."
+fi
+
+
 # Cycle through all Manifests in the manifest of the Manifest-List
 for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
 do
@@ -53,7 +95,7 @@ do
     arch="$arch"$(echo $manifest | jq -r '.platform.variant')
   fi
 
-  PLATFORM_TARGET_IMAGE="$DOCKER_TARGET_IMAGE""-""$arch"
+  PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
   if [ ! -z "$arch" ] && [ ! -z "$digest" ]; then
     docker pull "$SOURCE_IMAGE""@""$digest"
     docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
@@ -67,13 +109,13 @@ do
 done;
 
 # Check for existing manifest and delete it before creating new one
-check=$(docker manifest inspect "$DOCKER_TARGET_IMAGE")
+check=$(docker manifest inspect "$TARGET_IMAGE")
 
 if [ $? -eq "0" ]; then
-  docker manifest rm "$$DOCKER_TARGET_IMAGE"  2>/dev/null
+  docker manifest rm "$TARGET_IMAGE"  2>/dev/null
 fi
 
-docker manifest create $DOCKER_TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
 
 echo "Pushing Image to docker ..."
-docker manifest push "$DOCKER_TARGET_IMAGE"
+docker manifest push "$TARGET_IMAGE"
