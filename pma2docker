@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1.1.0
+VERSION=1.2.0
 ONLY_SINGLE_IMAGES=0
 ONLY_PULL_SPLIT=0
 SOURCE_IMAGE=""
@@ -12,14 +12,16 @@ TARGET_SERVER=""
 TARGET_USER=""
 TARGET_PASSWORD=""
 LIST_OF_PLATFORM_IMAGES=""
+LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
 
 function usage(){
-  echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <DOCKER_TARGET_IMAGE_WITH_TAG>"
+  echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <TARGET_IMAGE>"
   echo " "
   echo "Options:"
   echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
   echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
+  echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
@@ -59,22 +61,48 @@ function dependencyCheck(){
   fi
 }
 
+function validateArch(){
+  local IFS=$','
+  local match="0"
+
+  for a in $LIST_OF_ARCHS;
+  do
+    if [[ $a    == "linux/amd64"    ]]; then a="amd64"   ; fi;
+    if [[ $a    == "linux/arm/v5"   ]]; then a="armv5"   ; fi;
+    if [[ $a    == "linux/arm/v7"   ]]; then a="armv7"   ; fi;
+    if [[ $a    == "linux/arm64/v8" ]]; then a="arm64"   ; fi;
+    if [[ $a    == "linux/386"      ]]; then a="i386"    ; fi;
+    if [[ $a    == "linux/mips64le" ]]; then a="mips64le"; fi;
+    if [[ $a    == "linux/ppc64le"  ]]; then a="ppc64le" ; fi;
+    if [[ $a    == "linux/riscv64"  ]]; then a="riscv64" ; fi;
+    if [[ $a    == "linux/s390x"    ]]; then a="s390x"   ; fi;
+
+    if [[ $arch == $a ]]; then match="1"; fi
+  done
+
+  if [[ $match == "1" ]]; then return 0; else return 1; fi;
+}
+
+## START OF PROCESS ##
 dependencyCheck
 
+# Parameter handling
 cnt=0
 NON_FLAG_CNT=2
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
   if [[ "$arg" == "--version" ]];                 then version; exit; fi;
   if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
-  if [[ "$arg" == "--only-single-images" ]] \
-  || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
   if [[ "$arg" == "--source-password" ]];         then NEXT_ITEM="--source-password"; continue; fi;
   if [[ "$arg" == "--target-user" ]];             then NEXT_ITEM="--target-user"; continue; fi;
   if [[ "$arg" == "--target-password" ]];         then NEXT_ITEM="--target-password"; continue; fi;
   if [[ "$arg" == "--pull-split" ]] \
   || [[ "$arg" == "-p" ]];                        then ONLY_PULL_SPLIT=1; NON_FLAG_CNT=1; continue; fi;
+  if [[ "$arg" == "--only-single-images" ]] \
+  || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
+  if [[ "$arg" == "--only-arch" ]] \
+  || [[ "$arg" == "-a" ]];                        then NEXT_ITEM="--only-arch"; continue; fi;
   if [[ "$cnt" == $(( "$#" -1 )) ]] && \
      [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
   if [[ "$cnt" == $(( "$#" -0 )) ]] && \
@@ -85,6 +113,7 @@ for arg in "$@"; do
   if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
   echo "Unknown parameter: $arg"
   echo " "
   usage
@@ -232,7 +261,7 @@ do
   fi
 
   PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
-  if [ ! -z "$arch" ] && [ ! -z "$digest" ]; then
+  if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
     echo " $arch ---------------------------------------------------------------------------------------"
     docker pull "$SOURCE_IMAGE""@""$digest"
     if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi

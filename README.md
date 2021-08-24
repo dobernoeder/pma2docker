@@ -74,3 +74,12 @@ You maybe want to download a multiarch image only and split it into its single i
 pma2docker --pull-split dobernoeder/helloworld:latest
 ```
 Afterwards you do have all single images in your local docker instance. Use *docker image ls* to list them and *docker push* to push the single image to your target repository by hand. 
+
+
+If you would like to include only specific architectures in your target multi-arch to save space on your target server, you might want to use this command:
+```
+pma2docker --only-arch "amd64,armv7"
+```
+You can choose out of these list to combine several architectures. You just need to seperate them by a ","
+`linux/amd64,inux/arm/v5,linux/arm/v7,linux/arm64/v8,linux/386,linux/mips64le,linux/ppc64le,linux/riscv64,linux/s390x,amd64,armv5,armv7,arm64,i386,mips64le,ppc64le,riscv64,s390x`
+This is the official supported list of architectures oriented at the docker tags most images use. You might do have other architecture types in your image manifest lists which should also work as long as you specify them correct on the `--only-arch` parameter.

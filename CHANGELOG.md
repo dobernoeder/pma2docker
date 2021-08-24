@@ -4,6 +4,7 @@ Documentation of changes
 ### [UPCOMING] - 2021-08-24
 ### Added
 - Added Pull-Split feature to download multiarch image and split with suffix only
+- Added function to choose only specific architectures from source images to push to target image
 
 ### Changed
 - Stability improvments
