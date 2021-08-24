@@ -1,7 +1,8 @@
 # Changelog
 Documentation of changes
 
-### [UPCOMING] - 2021-08-24
+
+## [1.2.0] - 2021-08-25
 ### Added
 - Added Pull-Split feature to download multiarch image and split with suffix only
 - Added function to choose only specific architectures from source images to push to target image
@@ -10,6 +11,7 @@ Documentation of changes
 ### Changed
 - Stability improvments
 - Better user feedback when aborting process 
+
 
 ## [1.1.0] - 2021-08-24
 - Added validity check for source and target repository
@@ -23,6 +25,7 @@ Documentation of changes
 - Updated CHANGELOG.md
 - Updated README.md
 
+
 ## [1.0.0] - 2021-08-20
 Released first version
 ### Added
@@ -34,6 +37,7 @@ Released first version
 
 ## [Original Project]
 The original project can be found at: [github.com](https://github.com/dobernoeder/pma2docker)
-[UPCOMING] https://github.com/dobernoeder/pma2docker/compare/1.1.0...master
+[1.2.0] https://github.com/dobernoeder/pma2docker/compare/1.2.0...master
+[1.1.0] https://github.com/dobernoeder/pma2docker/compare/1.0.0...1.2.0
 [1.1.0] https://github.com/dobernoeder/pma2docker/compare/1.0.0...1.1.0
 [1.0.0] https://github.com/dobernoeder/pma2docker/commits/1.0.0
