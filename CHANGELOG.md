@@ -5,6 +5,7 @@ Documentation of changes
 ### Added
 - Added Pull-Split feature to download multiarch image and split with suffix only
 - Added function to choose only specific architectures from source images to push to target image
+- Added function to extract image for specific architectures or all architectures to an single image file
 
 ### Changed
 - Stability improvments

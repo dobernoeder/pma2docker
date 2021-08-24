@@ -14,6 +14,7 @@ TARGET_PASSWORD=""
 LIST_OF_PLATFORM_IMAGES=""
 LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
+EXTRACT_PATH=""
 
 function usage(){
   echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <TARGET_IMAGE>"
@@ -22,6 +23,7 @@ function usage(){
   echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
   echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
   echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
+  echo "  -e, --extract             - Save Source Image to a file"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
@@ -103,6 +105,8 @@ for arg in "$@"; do
   || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--only-arch" ]] \
   || [[ "$arg" == "-a" ]];                        then NEXT_ITEM="--only-arch"; continue; fi;
+  if [[ "$arg" == "--extract" ]] \
+  || [[ "$arg" == "-e" ]];                        then NEXT_ITEM="--extract"; NON_FLAG_CNT=1; continue; fi;
   if [[ "$cnt" == $(( "$#" -1 )) ]] && \
      [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
   if [[ "$cnt" == $(( "$#" -0 )) ]] && \
@@ -114,6 +118,7 @@ for arg in "$@"; do
   if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
   echo "Unknown parameter: $arg"
   echo " "
   usage
@@ -121,7 +126,7 @@ for arg in "$@"; do
 done
 
 # Additional parameter inspection and handling
-if [[ $ONLY_PULL_SPLIT == "1" ]]; then
+if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
   TARGET_IMAGE=$SOURCE_IMAGE
   if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
     echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
@@ -130,7 +135,13 @@ if [[ $ONLY_PULL_SPLIT == "1" ]]; then
   fi
 fi;
 
+# Check if extract path exists when --extract was set
+if [ ! -d $EXTRACT_PATH ]; then
+  echo "ERROR: You specified the --extract option to save an image to a file. You must specify an valid, existing directory to export the *.tar.gz"
+  exit 1
+fi
 
+# if only one paramter was added, this cannot run properly, prompt usage dialog and end
 if [ $# -lt 2 ]; then
   usage
   exit 1
@@ -267,10 +278,14 @@ do
     if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
     docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
     if [[ ! $? -eq 0 ]]; then echo "Unable to tag new image for architecture $arch. Abort process..."; exit 1; fi
-    if [[ $ONLY_PULL_SPLIT == "0" ]]; then
+    if [[ $ONLY_PULL_SPLIT == "0" ]] && [[ -z $EXTRACT_PATH ]]; then
       docker push "$PLATFORM_TARGET_IMAGE"
       if [[ ! $? -eq 0 ]]; then echo "Unable to push image for architecture $arch. Abort process..."; exit 1; fi
     fi
+    if [[ ! -z $EXTRACT_PATH ]]; then
+      echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
+      docker save -o $EXTRACT_PATH"/image-$arch.tar.gz" "$PLATFORM_TARGET_IMAGE"
+    fi;
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
   fi;
 
@@ -291,9 +306,14 @@ if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
   docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
   if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
 
-  echo "Pushing Image to docker ..."
-  docker manifest push "$TARGET_IMAGE"
-  if [[ ! $? -eq 0 ]]; then echo "Unable to push multi-arch manifest. Abort process..."; exit 1; fi
+  if [[ -z $EXTRACT_PATH ]]; then
+    echo "Pushing Image to docker ..."
+    docker manifest push "$TARGET_IMAGE"
+    if [[ ! $? -eq 0 ]]; then echo "Unable to push multi-arch manifest. Abort process..."; exit 1; fi
+  fi;
 else
   echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
+  if [[ ! -z $EXTRACT_PATH ]]; then
+    echo " WARNING: Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
+  fi
 fi;

@@ -83,3 +83,10 @@ pma2docker --only-arch "amd64,armv7"
 You can choose out of these list to combine several architectures. You just need to seperate them by a ","
 `linux/amd64,inux/arm/v5,linux/arm/v7,linux/arm64/v8,linux/386,linux/mips64le,linux/ppc64le,linux/riscv64,linux/s390x,amd64,armv5,armv7,arm64,i386,mips64le,ppc64le,riscv64,s390x`
 This is the official supported list of architectures oriented at the docker tags most images use. You might do have other architecture types in your image manifest lists which should also work as long as you specify them correct on the `--only-arch` parameter.
+
+If you want to store the multiarch image or single images of it to your disk, you would need the following call
+```
+pma2docker --only-arch "armv7,arm64" --only-single-arch --extract /home/myuser/imagedir dobernoeder/helloworld:latest
+```
+This stores two files as \*.tar.gz in the folder `/home/myuser/imagedir/, one for each architecture. The name cannot be specified by command line and is *image-$arch.tar.gz*, for example image-amd64.tar.gz for x86_64 architecture.
+**Note**: The export of multi architecture images to a file is currently not supported by this tool. The parameter --only-single-arch gets activated automatically when you set the --extract option.
