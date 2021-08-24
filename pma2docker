@@ -30,17 +30,46 @@ function version(){
   echo "pma2docker v.$VERSION"
 }
 
+function dependencyCheck(){
+  # Check installed tools: bash, jq, docker
+  bash --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
+  jq --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
+  docker --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'docker' is not installed. Please make sure that 'docker' ist installed and configured properly"; exit 1; }
+
+  # Check if command docker manifest is available
+  [ $(docker manifest --help | grep "docker manifest COMMAND --help" | wc -l) -ge "1" ] || { echo "It loooks like there is noch command 'docker manifest' available on the system. Please verify, if you can run 'docker manifest --help' successfully on the system. You may need to enable docker's experimental client features!"; exit 1; }
+
+  # Check if command docker buildx is available
+  docker_server_start=$(docker info | grep -En "^Server" | cut -d':' -f1)
+  client_plugins=$(docker info | head -n $(( $docker_server_start - 2)) | grep -A 100 'Plugins' | grep -v "Plugins" | awk '{ print; $1 }' | tr -d ' ' | cut -d':' -f1)
+
+  BUILDX_ENABLED="0"
+  for plugin in $client_plugins
+  do
+    if [[ "$plugin" = "buildx" ]]; then
+      BUILDX_ENABLED="1"
+    fi
+  done;
+
+  if [[ "$BUILDX_ENABLED" = "0" ]]; then
+    echo "ERROR: Docker Plugin 'buildx' is needed to create multiarchitectural images. You can find neccessary information here: https://docs.docker.com/buildx/working-with-buildx/"
+    exit 1
+  fi
+}
+
+dependencyCheck
+
 cnt=0
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
+  if [[ "$arg" == "--version" ]];                 then version; exit; fi;
+  if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
   if [[ "$cnt" == $(( "$#" -1 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
   if [[ "$cnt" == $(( "$#" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
   if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER=$arg; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER=$arg; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
-  if [[ "$arg" == "--version" ]];                 then version; exit; fi;
-  if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
   if [[ "$arg" == "--only-single-images" ]] \
   || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
@@ -143,6 +172,10 @@ if [[ ! -z $SOURCE_USER ]]; then
     echo " "
     echo "Login to Source Repository was not successful, leaving..."
     exit 1
+  else
+    echo "No login possible with this user/password combination to $SOURCE_SERVER"
+    echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
+    echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
   fi
 fi;
 
@@ -157,6 +190,10 @@ if [[ ! -z $TARGET_USER ]]; then
     echo " "
     echo "Login to Target Repository was not successful, leaving..."
     exit 1
+  else
+    echo "No login possible with this user/password combination to $TARGET_SERVER"
+    echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
+    echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
   fi
 fi;
 
@@ -179,8 +216,11 @@ do
   if [ ! -z "$arch" ] && [ ! -z "$digest" ]; then
     echo " $arch ---------------------------------------------------------------------------------------"
     docker pull "$SOURCE_IMAGE""@""$digest"
+    if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
     docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
+    if [[ ! $? -eq 0 ]]; then echo "Unable to tag new image for architecture $arch. Abort process..."; exit 1; fi
     docker push "$PLATFORM_TARGET_IMAGE"
+    if [[ ! $? -eq 0 ]]; then echo "Unable to push image for architecture $arch. Abort process..."; exit 1; fi
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
   fi;
 
@@ -199,9 +239,11 @@ if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]]; then
   fi
 
   docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+  if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
 
   echo "Pushing Image to docker ..."
   docker manifest push "$TARGET_IMAGE"
+  if [[ ! $? -eq 0 ]]; then echo "Unable to push multi-arch manifest. Abort process..."; exit 1; fi
 else
   echo " --> SKIP Multi-Architecture Upload due to Parameter --only-single-images"
 fi;
