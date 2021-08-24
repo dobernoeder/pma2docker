@@ -2,6 +2,7 @@
 
 VERSION=1.1.0
 ONLY_SINGLE_IMAGES=0
+ONLY_PULL_SPLIT=0
 SOURCE_IMAGE=""
 TARGET_IMAGE=""
 SOURCE_SERVER=""
@@ -18,6 +19,7 @@ function usage(){
   echo " "
   echo "Options:"
   echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
+  echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
@@ -60,27 +62,44 @@ function dependencyCheck(){
 dependencyCheck
 
 cnt=0
+NON_FLAG_CNT=2
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
   if [[ "$arg" == "--version" ]];                 then version; exit; fi;
   if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
-  if [[ "$cnt" == $(( "$#" -1 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
-  if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER=$arg; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER=$arg; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD=$arg; NEXT_ITEM=""; continue; fi
   if [[ "$arg" == "--only-single-images" ]] \
   || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
   if [[ "$arg" == "--source-password" ]];         then NEXT_ITEM="--source-password"; continue; fi;
   if [[ "$arg" == "--target-user" ]];             then NEXT_ITEM="--target-user"; continue; fi;
   if [[ "$arg" == "--target-password" ]];         then NEXT_ITEM="--target-password"; continue; fi;
+  if [[ "$arg" == "--pull-split" ]] \
+  || [[ "$arg" == "-p" ]];                        then ONLY_PULL_SPLIT=1; NON_FLAG_CNT=1; continue; fi;
+  if [[ "$cnt" == $(( "$#" -1 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "2" ]];                then TARGET_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "1" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   echo "Unknown parameter: $arg"
   echo " "
   usage
   exit 1
 done
+
+# Additional parameter inspection and handling
+if [[ $ONLY_PULL_SPLIT == "1" ]]; then
+  TARGET_IMAGE=$SOURCE_IMAGE
+  if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
+    echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
+    TARGET_USER=""
+    TARGET_PASSWORD=""
+  fi
+fi;
 
 
 if [ $# -lt 2 ]; then
@@ -219,8 +238,10 @@ do
     if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
     docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
     if [[ ! $? -eq 0 ]]; then echo "Unable to tag new image for architecture $arch. Abort process..."; exit 1; fi
-    docker push "$PLATFORM_TARGET_IMAGE"
-    if [[ ! $? -eq 0 ]]; then echo "Unable to push image for architecture $arch. Abort process..."; exit 1; fi
+    if [[ $ONLY_PULL_SPLIT == "0" ]]; then
+      docker push "$PLATFORM_TARGET_IMAGE"
+      if [[ ! $? -eq 0 ]]; then echo "Unable to push image for architecture $arch. Abort process..."; exit 1; fi
+    fi
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
   fi;
 
@@ -231,7 +252,7 @@ done;
 
 # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
 echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
-if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]]; then
+if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
   check=$(docker manifest inspect "$TARGET_IMAGE")
 
   if [ $? -eq "0" ]; then
@@ -245,5 +266,5 @@ if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]]; then
   docker manifest push "$TARGET_IMAGE"
   if [[ ! $? -eq 0 ]]; then echo "Unable to push multi-arch manifest. Abort process..."; exit 1; fi
 else
-  echo " --> SKIP Multi-Architecture Upload due to Parameter --only-single-images"
+  echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
 fi;

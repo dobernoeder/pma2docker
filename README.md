@@ -67,3 +67,10 @@ pma2docker --target-user johndoe --target-password mypassword dobernoeder/hellow
 
 You can also use `--source-user` and `--source-password` to specify credentials for your source repository.
 You do not need to specify any credentials if your local docker instance is already configured to use the repositories.
+
+
+You maybe want to download a multiarch image only and split it into its single images and push only one architecture by hand to a repository. So you can prepare the single images in your local repository:
+```
+pma2docker --pull-split dobernoeder/helloworld:latest
+```
+Afterwards you do have all single images in your local docker instance. Use *docker image ls* to list them and *docker push* to push the single image to your target repository by hand. 

@@ -1,6 +1,14 @@
 # Changelog
 Documentation of changes
 
+### [UPCOMING] - 2021-08-24
+### Added
+- Added Pull-Split feature to download multiarch image and split with suffix only
+
+### Changed
+- Stability improvments
+- Better user feedback when aborting process 
+
 ## [1.1.0] - 2021-08-24
 - Added validity check for source and target repository
 - Added usage information dialog
