@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1.2.0
+VERSION=1.3.0
 ONLY_SINGLE_IMAGES=0
 ONLY_PULL_SPLIT=0
 SOURCE_IMAGE=""
@@ -15,6 +15,11 @@ LIST_OF_PLATFORM_IMAGES=""
 LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
 EXTRACT_PATH=""
+USE_SINGLE_IMAGES=0
+ARR_SI_TYPE=""
+ARR_SI_PATH=""
+ARR_SI_ARCH=""
+
 
 function usage(){
   echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <TARGET_IMAGE>"
@@ -24,6 +29,8 @@ function usage(){
   echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
   echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
   echo "  -e, --extract             - Save Source Image to a file"
+  echo "  -i, --from-single-image   - Load one or more single images you would like to combine to a multiarch image. You can specify multiple single image references:"
+  echo '                              Use this form: --from-single-image "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
@@ -85,6 +92,36 @@ function validateArch(){
   if [[ $match == "1" ]]; then return 0; else return 1; fi;
 }
 
+function prepareSingleImage(){
+
+   if [[ $(echo $arg | grep -E "^type=.*,path=.*,arch=.*$" | wc -l) -lt 1 ]]; then
+     echo "ERROR: Specified single image definition is not valid. Please enter a specification string to address image in this form:"
+     echo '     --from-single-image "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
+     echo "     "
+     echo ' Example: pma2docker --from-single-image "type=image,dobernoeder/helloworld:latest,arch=amd64" dobernoeder/newworld:latest-amd64'
+     echo "     "
+     exit 1
+   fi
+
+   ARR_SI_TYPE+=("$(echo $arg | cut -d',' -f1 | cut -d'=' -f2 )")
+   ARR_SI_PATH+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
+   ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## START OF PROCESS ##
 dependencyCheck
 
@@ -107,23 +144,32 @@ for arg in "$@"; do
   || [[ "$arg" == "-a" ]];                        then NEXT_ITEM="--only-arch"; continue; fi;
   if [[ "$arg" == "--extract" ]] \
   || [[ "$arg" == "-e" ]];                        then NEXT_ITEM="--extract"; NON_FLAG_CNT=1; continue; fi;
-  if [[ "$cnt" == $(( "$#" -1 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "2" ]];                then TARGET_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "1" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$arg" == "--from-single-image" ]] \
+  || [[ "$arg" == "-i" ]];                        then NEXT_ITEM="--from-single-image"; NON_FLAG_CNT=1; continue; fi;
   if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--from-single-image" ]]; then prepareSingleImage; USE_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
+  if [[ "$cnt" == $(( "$#" -1 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "2" ]];                then TARGET_IMAGE="$arg"; continue; fi;
+  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
+     [[ "$NON_FLAG_CNT" == "1" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
   echo "Unknown parameter: $arg"
   echo " "
   usage
   exit 1
 done
+
+exit 1
+# When --from-single-image is specified do special download handling
+##if [[ $USE_SINGLE_IMAGES == "1" ]]; then
+  ##
+##fi
 
 # Additional parameter inspection and handling
 if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
