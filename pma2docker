@@ -15,10 +15,9 @@ LIST_OF_PLATFORM_IMAGES=""
 LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
 EXTRACT_PATH=""
-USE_SINGLE_IMAGES=0
-ARR_SI_TYPE=""
-ARR_SI_PATH=""
-ARR_SI_ARCH=""
+ARR_SI_TYPE=()
+ARR_SI_PATH=()
+ARR_SI_ARCH=()
 
 
 function usage(){
@@ -92,6 +91,126 @@ function validateArch(){
   if [[ $match == "1" ]]; then return 0; else return 1; fi;
 }
 
+function validateAdjustImageTag(){
+  ## Pre-Checks for Parameter
+  if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
+    echo "NOTICE: It looks like you did not specify a tag on source file. Asume 'latest' as tag."
+    SOURCE_IMAGE="$SOURCE_IMAGE:latest"
+  fi
+
+  if [ $(basename $TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]; then
+    echo "NOTICE: It looks like you did not specify a tag on target file. Asume 'latest' as tag."
+    TARGET_IMAGE="$TARGET_IMAGE:latest"
+  fi
+}
+
+function checkAndGetNrOfManifestsInManifestList(){
+  # Check for Manifests in Image
+  NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length')
+
+  re='^[0-9]+$'
+  if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
+    echo "It looks like the Source Docker-Image is not suitable for this action."
+    echo "It either does not exist or there was an error checking the provided Image."
+    exit 1
+  fi
+
+  if [ $NR_OF_MANIFESTS -eq 0 ]; then
+    echo "It looks like the Source Docker-Image is not suitable for this action."
+    echo "Please provide an existing multi architecture image. You can only copy existing multi-arch images!"
+    exit 1
+  fi
+}
+
+
+function checkImageIsDocker(){
+  # Check if source images are Docker Images or Images from a custom repository
+  docker_creds=$(cat ~/.docker/config.json | jq ".auths | keys" | grep -v "\[" | grep -v "\]" | tr -d ' ' | tr -d ',' | tr -d '"' | sed 's/https:\/\///g' | cut -d'/' -f1)
+
+  docker manifest inspect "docker.io/"$SOURCE_IMAGE > /dev/null 2>&1
+  SOURCE_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
+  docker manifest inspect "docker.io/"$TARGET_IMAGE > /dev/null 2>&1
+  TARGET_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
+
+  if [[ $SOURCE_IS_DOCKER = "1" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+    SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
+  fi
+  if [[ $TARGET_IS_DOCKER = "1" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+    TARGET_IMAGE="docker.io/"$TARGET_IMAGE
+  fi
+}
+
+
+function checkExistingCredentials()={
+  # Check if we do have credentials for source and target repository
+  SOURCE_CREDS=0
+  for cred in $docker_creds;
+  do
+    if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $cred =~ .*docker\.io.* ]]; then
+      SOURCE_CREDS=1
+      break;
+    fi
+  done;
+
+  TARGET_CREDS=0
+  for cred in $docker_creds;
+  do
+    if [[ $TARGET_IMAGE =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
+      TARGET_CREDS=1
+      break;
+    fi
+  done;
+}
+
+
+function loginToRepositories(){
+  # Validate checks for Repo-Images
+  if [[ $SOURCE_CREDS == 0 ]]; then
+    echo "WARNING: There are no credentials to login to source repository, you may need to login to access the repo."
+  fi
+  if [[ $TARGET_CREDS == 0 ]]; then
+    echo "WARNING: There are no credentials to login to target repository, you may need to login to write to the repo."
+  fi
+
+  if [[ ! -z $SOURCE_USER ]]; then
+    echo "Try to login to Source repository with provided information..."
+    if [[ -z $SOURCE_PASSWORD ]]; then
+      read -s -p "Please enter password for Source Repository:" SOURCE_PASSWORD
+    fi
+    SOURCE_SERVER=$(echo $SOURCE_IMAGE | cut -d'/' -f1)
+    docker login $SOURCE_SERVER --username $SOURCE_USER --password $SOURCE_PASSWORD > /dev/null 2>&1
+    if [[ ! $? -eq 0 ]]; then
+      echo " "
+      echo "Login to Source Repository was not successful, leaving..."
+      exit 1
+    else
+      echo "No login possible with this user/password combination to $SOURCE_SERVER"
+      echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
+      echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
+    fi
+  fi;
+
+  if [[ ! -z $TARGET_USER ]]; then
+    echo "Try to login to Target repository with provided information..."
+    if [[ -z $TARGET_PASSWORD ]]; then
+      read -s -p "Please enter password for Target Repository:" TARGET_PASSWORD
+    fi
+    TARGET_SERVER=$(echo $TARGET_IMAGE | cut -d'/' -f1)
+    docker login $TARGET_SERVER --username $TARGET_USER --password $TARGET_PASSWORD > /dev/null 2>&1
+    if [[ ! $? -eq 0 ]]; then
+      echo " "
+      echo "Login to Target Repository was not successful, leaving..."
+      exit 1
+    else
+      echo "No login possible with this user/password combination to $TARGET_SERVER"
+      echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
+      echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
+    fi
+  fi;
+}
+
+
+
 function prepareSingleImage(){
 
    if [[ $(echo $arg | grep -E "^type=.*,path=.*,arch=.*$" | wc -l) -lt 1 ]]; then
@@ -108,8 +227,6 @@ function prepareSingleImage(){
    ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
 
 }
-
-
 
 
 
@@ -152,7 +269,7 @@ for arg in "$@"; do
   if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
   if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--from-single-image" ]]; then prepareSingleImage; USE_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
+  if [[ "$NEXT_ITEM" == "--from-single-image" ]]; then prepareSingleImage; NEXT_ITEM=""; continue; fi
   if [[ "$cnt" == $(( "$#" -1 )) ]] && \
      [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
   if [[ "$cnt" == $(( "$#" -0 )) ]] && \
@@ -165,11 +282,11 @@ for arg in "$@"; do
   exit 1
 done
 
-exit 1
 # When --from-single-image is specified do special download handling
-##if [[ $USE_SINGLE_IMAGES == "1" ]]; then
-  ##
-##fi
+if [[ ${#ARR_SI_PATH[@]} -gt "0" ]]; then
+  echo "SingleImages specified: ${#ARR_SI_PATH[@]}"
+  exit 1
+fi
 
 # Additional parameter inspection and handling
 if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
@@ -193,115 +310,11 @@ if [ $# -lt 2 ]; then
   exit 1
 fi
 
-
-## Pre-Checks for Parameter
-if [ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]; then
-  echo "NOTICE: It looks like you did not specify a tag on source file. Asume 'latest' as tag."
-  SOURCE_IMAGE="$SOURCE_IMAGE:latest"
-fi
-
-if [ $(basename $TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]; then
-  echo "NOTICE: It looks like you did not specify a tag on target file. Asume 'latest' as tag."
-  TARGET_IMAGE="$TARGET_IMAGE:latest"
-fi
-
-
-# Check for Manifests in Image
-NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length')
-
-re='^[0-9]+$'
-if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
-  echo "It looks like the Source Docker-Image is not suitable for this action."
-  echo "It either does not exist or there was an error checking the provided Image."
-  exit 1
-fi
-
-if [ $NR_OF_MANIFESTS -eq 0 ]; then
-  echo "It looks like the Source Docker-Image is not suitable for this action."
-  echo "Please provide an existing multi architecture image. You can only copy existing multi-arch images!"
-  exit 1
-fi
-
-
-# Check if source images are Docker Images or Images from a custom repository
-docker_creds=$(cat ~/.docker/config.json | jq ".auths | keys" | grep -v "\[" | grep -v "\]" | tr -d ' ' | tr -d ',' | tr -d '"' | sed 's/https:\/\///g' | cut -d'/' -f1)
-
-docker manifest inspect "docker.io/"$SOURCE_IMAGE > /dev/null 2>&1
-SOURCE_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
-docker manifest inspect "docker.io/"$TARGET_IMAGE > /dev/null 2>&1
-TARGET_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
-
-
-if [[ $SOURCE_IS_DOCKER = "1" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
-  SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
-fi
-if [[ $TARGET_IS_DOCKER = "1" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
-  TARGET_IMAGE="docker.io/"$TARGET_IMAGE
-fi
-
-
-SOURCE_CREDS=0
-for cred in $docker_creds;
-do
-  if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $cred =~ .*docker\.io.* ]]; then
-    SOURCE_CREDS=1
-    break;
-  fi
-done;
-
-TARGET_CREDS=0
-for cred in $docker_creds;
-do
-  if [[ $TARGET_IMAGE =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
-    TARGET_CREDS=1
-    break;
-  fi
-done;
-
-# Validate checks for Repo-Images
-if [[ $SOURCE_CREDS == 0 ]]; then
-  echo "WARNING: There are no credentials to login to source repository, you may need to login to access the repo."
-fi
-if [[ $TARGET_CREDS == 0 ]]; then
-  echo "WARNING: There are no credentials to login to target repository, you may need to login to write to the repo."
-fi
-
-if [[ ! -z $SOURCE_USER ]]; then
-  echo "Try to login to Source repository with provided information..."
-  if [[ -z $SOURCE_PASSWORD ]]; then
-    read -s -p "Please enter password for Source Repository:" SOURCE_PASSWORD
-  fi
-  SOURCE_SERVER=$(echo $SOURCE_IMAGE | cut -d'/' -f1)
-  docker login $SOURCE_SERVER --username $SOURCE_USER --password $SOURCE_PASSWORD > /dev/null 2>&1
-  if [[ ! $? -eq 0 ]]; then
-    echo " "
-    echo "Login to Source Repository was not successful, leaving..."
-    exit 1
-  else
-    echo "No login possible with this user/password combination to $SOURCE_SERVER"
-    echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
-    echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
-  fi
-fi;
-
-if [[ ! -z $TARGET_USER ]]; then
-  echo "Try to login to Target repository with provided information..."
-  if [[ -z $TARGET_PASSWORD ]]; then
-    read -s -p "Please enter password for Target Repository:" TARGET_PASSWORD
-  fi
-  TARGET_SERVER=$(echo $TARGET_IMAGE | cut -d'/' -f1)
-  docker login $TARGET_SERVER --username $TARGET_USER --password $TARGET_PASSWORD > /dev/null 2>&1
-  if [[ ! $? -eq 0 ]]; then
-    echo " "
-    echo "Login to Target Repository was not successful, leaving..."
-    exit 1
-  else
-    echo "No login possible with this user/password combination to $TARGET_SERVER"
-    echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
-    echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
-  fi
-fi;
-
+validateAdjustImageTag
+checkAndGetNrOfManifestsInManifestList
+checkImageIsDocker
+checkExistingCredentials
+loginToRepositories
 
 
 # Cycle through all Manifests in the manifest of the Manifest-List
