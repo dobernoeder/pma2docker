@@ -105,7 +105,6 @@ function validateAdjustImageTag(){
 }
 
 function checkAndGetNrOfManifestsInManifestList(){
-  echo "$SOURCE_IMAGE"
   # Check for Manifests in Image
   NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length') > /dev/null 2>&1
 
@@ -275,8 +274,26 @@ function createMultiArchImage(){
   if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
 }
 
+function analyzeSourceManifest(){
+  # Get Information for Manifest
+  manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
+  digest=$(echo $manifest | jq -r '.digest')
+  arch=$(echo $manifest | jq -r '.platform.architecture')
 
+  # Check if we have a variant for an architecture, for example arm/v7
+  if [ $(echo $manifest | jq -r '.platform.variant') != "null" ]; then
+    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+  fi
+}
 
+function getSingleImages(){
+
+  for (( i=0; i<${#ARR_SI_PATH[@]}; i++ ));
+  do
+    pullImage ${ARR_SI_PATH[$i]}
+    LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" "${ARR_SI_PATH[$i]}
+  done
+}
 
 
 
@@ -331,8 +348,14 @@ done
 
 # When --from-single-image is specified do special download handling
 if [[ ${#ARR_SI_PATH[@]} -gt "0" ]]; then
-  echo "SingleImages specified: ${#ARR_SI_PATH[@]}"
-  exit 1
+  TARGET_IMAGE=$SOURCE_IMAGE
+  checkImageIsDocker
+  getSingleImages
+  tagImage ${ARR_SI_PATH[0]} $TARGET_IMAGE
+  pushImage $TARGET_IMAGE
+  createMultiArchImage $TARGET_IMAGE "$LIST_OF_PLATFORM_IMAGES"
+  pushManifest $TARGET_IMAGE
+  exit 0
 fi
 
 # Additional parameter inspection and handling
@@ -367,16 +390,7 @@ loginToRepositories
 # Cycle through all Manifests in the manifest of the Manifest-List
 for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
 do
-  # Get Information for Manifest
-  manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
-  digest=$(echo $manifest | jq -r '.digest')
-  arch=$(echo $manifest | jq -r '.platform.architecture')
-
-  # Check if we have a variant for an architecture, for example arm/v7
-  if [ $(echo $manifest | jq -r '.platform.variant') != "null" ]; then
-    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
-  fi
-
+  analyzeSourceManifest
   PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
   if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
     echo " $arch ---------------------------------------------------------------------------------------"
@@ -402,7 +416,7 @@ echo " MULTI-ARCH Creation & Upload --------------------------------------------
 if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
   createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
   if [[ -z $EXTRACT_PATH ]]; then
-    pushManifest "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
+    pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
   fi;
 else
   echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
