@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Supported Program Modes
+INFO_MODE="0"
+NORMAL_MODE="1"
+SOURCE_MODE="2"
+TARGET_MODE="3"
+
+
+PGM_MODE=$NORMAL_MODE
+NON_FLAG_CNT=0
+PGM_SETBY=""
 VERSION=1.3.0
 ONLY_SINGLE_IMAGES=0
 ONLY_PULL_SPLIT=0
@@ -65,6 +75,35 @@ function usage(){
 
 function version(){
   echo "pma2docker v.$VERSION"
+}
+
+function setPgmMode(){
+  local requestedMode=$1
+
+  if [[ $PGM_MODE -ne 1 ]]; then
+    echo "ERROR: Invalid parameter combination. '""$arg""' is not compatible with '""$PGM_SETBY""'"
+    exit 1
+  fi
+  if   [[ "$requestedMode" == "$INFO_MODE" ]]; then
+    PGM_MODE=0
+    PGM_SETBY="$arg"
+    NON_FLAG_CNT=0
+  elif [[ "$requestedMode" == "$NORMAL_MODE" ]]; then
+    PGM_MODE=1
+    PGM_SETBY="$arg"
+    NON_FLAG_CNT=2
+  elif [[ "$requestedMode" == "$SOURCE_MODE" ]]; then
+    PGM_MODE=2
+    PGM_SETBY="$arg"
+    NON_FLAG_CNT=1
+  elif [[ "$requestedMode" == "$TARGET_MODE" ]]; then
+    PGM_MODE=3
+    PGM_SETBY="$arg"
+    NON_FLAG_CNT=1
+  else
+    echo "ERROR: Illegal Mode selected by unknown problem. Abort..."
+    exit 1
+  fi
 }
 
 function dependencyCheck(){
@@ -381,22 +420,22 @@ cnt=0
 NON_FLAG_CNT=2
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
-  if [[ "$arg" == "--version" ]];                 then version; exit; fi;
-  if [[ "$arg" == "--help" ]];                    then usage;   exit; fi;
+  if [[ "$arg" == "--version" ]];                 then setPgmMode $INFO_MODE; version; exit; fi;
+  if [[ "$arg" == "--help" ]];                    then setPgmMode $INFO_MODE; usage;   exit; fi;
   if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
   if [[ "$arg" == "--source-password" ]];         then NEXT_ITEM="--source-password"; continue; fi;
   if [[ "$arg" == "--target-user" ]];             then NEXT_ITEM="--target-user"; continue; fi;
   if [[ "$arg" == "--target-password" ]];         then NEXT_ITEM="--target-password"; continue; fi;
   if [[ "$arg" == "--pull-split" ]] \
-  || [[ "$arg" == "-p" ]];                        then ONLY_PULL_SPLIT=1; NON_FLAG_CNT=1; continue; fi;
+  || [[ "$arg" == "-p" ]];                        then setPgmMode $SOURCE_MODE; ONLY_PULL_SPLIT=1; continue; fi;
   if [[ "$arg" == "--only-single-images" ]] \
   || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--only-arch" ]] \
   || [[ "$arg" == "-a" ]];                        then NEXT_ITEM="--only-arch"; continue; fi;
   if [[ "$arg" == "--extract" ]] \
-  || [[ "$arg" == "-e" ]];                        then NEXT_ITEM="--extract"; NON_FLAG_CNT=1; continue; fi;
+  || [[ "$arg" == "-e" ]];                        then setPgmMode $SOURCE_MODE; NEXT_ITEM="--extract"; continue; fi;
   if [[ "$arg" == "--merge-push" ]] \
-  || [[ "$arg" == "-m" ]];                        then NEXT_ITEM="--merge-push"; NON_FLAG_CNT=1; continue; fi;
+  || [[ "$arg" == "-m" ]];                        then setPgmMode $TARGET_MODE; NEXT_ITEM="--merge-push"; continue; fi;
   if [[ "$arg" == "--cleanup" ]] \
   || [[ "$arg" == "-c" ]];                        then CLEANUP=1; continue; fi;
   if [[ $cnt -le $(( "$#" -$NON_FLAG_CNT )) ]]; then
