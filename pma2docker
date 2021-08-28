@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Supported Program Modes
+NOT_INITIALIZED_MODE="-1"
 INFO_MODE="0"
 NORMAL_MODE="1"
 SOURCE_MODE="2"
 TARGET_MODE="4"
 
 
-PGM_MODE="-1"
+PGM_MODE="$NOT_INITIALIZED_MODE"
 NON_FLAG_CNT=2
 PGM_SETBY=""
 PARM_CNT="$#"
@@ -110,24 +111,24 @@ function setPgmMode(){
     return 0
   fi
 
-  if [[ $PGM_MODE -ne $1 ]] && [[ $PGM_MODE -ne "-1" ]]; then
+  if [[ $PGM_MODE -ne $1 ]]; then
     echo "ERROR: Invalid parameter combination. '""$arg""' is not compatible with '""$PGM_SETBY""'"
     exit 1
   fi
   if   [[ "$requestedMode" == "$INFO_MODE" ]]; then
-    PGM_MODE=0
+    PGM_MODE="$INFO_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=0
   elif [[ "$requestedMode" == "$NORMAL_MODE" ]]; then
-    PGM_MODE=1
+    PGM_MODE="$NORMAL_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=2
   elif [[ "$requestedMode" == "$SOURCE_MODE" ]]; then
-    PGM_MODE=2
+    PGM_MODE="$SOURCE_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=1
   elif [[ "$requestedMode" == "$TARGET_MODE" ]]; then
-    PGM_MODE=3
+    PGM_MODE="$TARGET_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=1
   else
@@ -476,6 +477,7 @@ for arg in "$@"; do
     if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--merge-push" ]];        then prepareSingleImage; NEXT_ITEM=""; continue; fi
   fi
+  if [[ "$PGM_MODE" == "$NOT_INITIALIZED_MODE" ]]; then PGM_MODE=$NORMAL_MODE; fi;  # If not initialized by Flag-Parameter, set to Normal mode
   if [[ "$PGM_MODE" == "$NORMAL_MODE" ]]; then
     if [[ "$cnt" == $(( "$PARM_CNT" -1 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
     if [[ "$cnt" == $(( "$PARM_CNT" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
@@ -494,7 +496,6 @@ done
 
 if [[ "$PGM_MODE" = "$TARGET_MODE" ]]; then
   # When --merge-push is specified do special download handling
-  TARGET_IMAGE=$SOURCE_IMAGE
   checkImageIsDocker
   getSingleImages
   tagImage ${ARR_SI_PATH[0]} $TARGET_IMAGE
@@ -525,7 +526,6 @@ fi
 # Additional parameter inspection and handling
 if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
   if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
-    TARGET_IMAGE=$SOURCE_IMAGE
     if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
       echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
       TARGET_USER=""
