@@ -111,7 +111,7 @@ function setPgmMode(){
     return 0
   fi
 
-  if [[ $PGM_MODE -ne $1 ]]; then
+  if [[ $PGM_MODE -ne $1 ]] && [[ $NOT_INITIALIZED_MODE -ne "-1" ]]; then
     echo "ERROR: Invalid parameter combination. '""$arg""' is not compatible with '""$PGM_SETBY""'"
     exit 1
   fi
@@ -379,7 +379,7 @@ function analyzeSourceManifest(){
   arch=$(echo $manifest | jq -r '.platform.architecture')
 
   # Check if we have a variant for an architecture, for example arm/v7
-  if [ $(echo $manifest | jq -r '.platform.variant') != "null" ]; then
+  if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
     arch="$arch"$(echo $manifest | jq -r '.platform.variant')
   fi
 }
@@ -437,7 +437,7 @@ function multiArchUpload(){
 
 function cleanup(){
   echo "Delete Manifests..."
-  docker manifest rm $DEL_MANIFESTS
+  docker manifest rm $DEL_MANIFESTS 2>/dev/null
   echo "Delete Images..."
   docker image rm $DEL_IMAGES
 }
