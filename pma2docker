@@ -4,11 +4,11 @@
 INFO_MODE="0"
 NORMAL_MODE="1"
 SOURCE_MODE="2"
-TARGET_MODE="3"
+TARGET_MODE="4"
 
 
 PGM_MODE=$NORMAL_MODE
-NON_FLAG_CNT=0
+NON_FLAG_CNT=2
 PGM_SETBY=""
 VERSION=1.3.0
 ONLY_SINGLE_IMAGES=0
@@ -100,6 +100,14 @@ function setPgmMode(){
     PGM_MODE=3
     PGM_SETBY="$arg"
     NON_FLAG_CNT=1
+    # Callers can pass parameter which can be used by Normal- / Source- / Target- Mode, this will not change the specified mode settings
+  elif
+      [[ "$requestedMode" == $(("$NORMAL_MODE"+"$SOURCE_MODE")) ]] \
+      || [[ "$requestedMode" == $(("$NORMAL_MODE"+"$TARGET_MODE")) ]] \
+      || [[ "$requestedMode" == $(("$NORMAL_MODE"+"$SOURCE_MODE"+"$TARGET_MODE")) ]]; then
+        PGM_MODE="$PGM_MODE"
+        PGM_SETBY="$PGM_SETBY"
+        NON_FLAG_CNT="$NON_FLAG_CNT"
   else
     echo "ERROR: Illegal Mode selected by unknown problem. Abort..."
     exit 1
@@ -417,28 +425,27 @@ dependencyCheck
 
 # Parameter handling
 cnt=0
-NON_FLAG_CNT=2
 for arg in "$@"; do
   cnt=$(( $cnt+1 ))
-  if [[ "$arg" == "--version" ]];                 then setPgmMode $INFO_MODE; version; exit; fi;
-  if [[ "$arg" == "--help" ]];                    then setPgmMode $INFO_MODE; usage;   exit; fi;
-  if [[ "$arg" == "--source-user" ]];             then NEXT_ITEM="--source-user"; continue; fi;
-  if [[ "$arg" == "--source-password" ]];         then NEXT_ITEM="--source-password"; continue; fi;
-  if [[ "$arg" == "--target-user" ]];             then NEXT_ITEM="--target-user"; continue; fi;
-  if [[ "$arg" == "--target-password" ]];         then NEXT_ITEM="--target-password"; continue; fi;
+  if [[ "$arg" == "--version" ]];                 then setPgmMode $INFO_MODE;                     version; exit; fi;
+  if [[ "$arg" == "--help" ]];                    then setPgmMode $INFO_MODE;                     usage;   exit; fi;
+  if [[ "$arg" == "--source-user" ]];             then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE)); NEXT_ITEM="--source-user"; continue; fi;
+  if [[ "$arg" == "--source-password" ]];         then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE)); NEXT_ITEM="--source-password"; continue; fi;
+  if [[ "$arg" == "--target-user" ]];             then setPgmMode $(($NORMAL_MODE+$TARGET_MODE)); NEXT_ITEM="--target-user"; continue; fi;
+  if [[ "$arg" == "--target-password" ]];         then setPgmMode $(($NORMAL_MODE+$TARGET_MODE)); NEXT_ITEM="--target-password"; continue; fi;
   if [[ "$arg" == "--pull-split" ]] \
   || [[ "$arg" == "-p" ]];                        then setPgmMode $SOURCE_MODE; ONLY_PULL_SPLIT=1; continue; fi;
   if [[ "$arg" == "--only-single-images" ]] \
-  || [[ "$arg" == "-s" ]];                        then ONLY_SINGLE_IMAGES=1; continue; fi;
+  || [[ "$arg" == "-s" ]];                        then setPgmMode $(($NORMAL_MODE+$TARGET_MODE)); ONLY_SINGLE_IMAGES=1; continue; fi;
   if [[ "$arg" == "--only-arch" ]] \
-  || [[ "$arg" == "-a" ]];                        then NEXT_ITEM="--only-arch"; continue; fi;
+  || [[ "$arg" == "-a" ]];                        then setPgmMode $(($NORMAL_MODE+$TARGET_MODE)); NEXT_ITEM="--only-arch"; continue; fi;
   if [[ "$arg" == "--extract" ]] \
   || [[ "$arg" == "-e" ]];                        then setPgmMode $SOURCE_MODE; NEXT_ITEM="--extract"; continue; fi;
   if [[ "$arg" == "--merge-push" ]] \
   || [[ "$arg" == "-m" ]];                        then setPgmMode $TARGET_MODE; NEXT_ITEM="--merge-push"; continue; fi;
   if [[ "$arg" == "--cleanup" ]] \
-  || [[ "$arg" == "-c" ]];                        then CLEANUP=1; continue; fi;
-  if [[ $cnt -le $(( "$#" -$NON_FLAG_CNT )) ]]; then
+  || [[ "$arg" == "-c" ]];                        then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); CLEANUP=1; continue; fi;
+  if [[ $cnt -le $(( "$#" - $NON_FLAG_CNT )) ]]; then
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
@@ -447,12 +454,16 @@ for arg in "$@"; do
     if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--merge-push" ]];        then prepareSingleImage; NEXT_ITEM=""; continue; fi
   fi
-  if [[ "$cnt" == $(( "$#" -1 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "2" ]];                then TARGET_IMAGE="$arg"; continue; fi;
-  if [[ "$cnt" == $(( "$#" -0 )) ]] && \
-     [[ "$NON_FLAG_CNT" == "1" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
+  if [[ "$PGM_MODE" == "$NORMAL_MODE" ]]; then
+    if [[ "$cnt" == $(( "$#" -1 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
+    if [[ "$cnt" == $(( "$#" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
+  fi
+  if [[ "$PGM_MODE" == "$TARGET_MODE" ]]; then
+    if [[ "$cnt" == $(( "$#" -0 )) ]];              then TARGET_IMAGE="$arg"; continue; fi;
+  fi
+  if [[ "$PGM_MODE" == "$SOURCE_MODE" ]]; then
+    if [[ "$cnt" == $(( "$#" -0 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
+  fi
   echo "Unknown parameter: $arg"
   echo " "
   usage
@@ -475,23 +486,27 @@ if [[ ${#ARR_SI_PATH[@]} -gt "0" ]]; then
 fi
 
 # Additional parameter inspection and handling
-if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
-  TARGET_IMAGE=$SOURCE_IMAGE
-  if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
-    echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
-    TARGET_USER=""
-    TARGET_PASSWORD=""
-  fi
-fi;
+if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
+  if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
+    TARGET_IMAGE=$SOURCE_IMAGE
+    if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
+      echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
+      TARGET_USER=""
+      TARGET_PASSWORD=""
+    fi
+  fi;
 
-# Check if extract path exists when --extract was set
-if [ ! -d $EXTRACT_PATH ]; then
-  echo "ERROR: You specified the --extract option to save an image to a file. You must specify an valid, existing directory to export the *.tar.gz"
-  exit 1
+  # Check if extract path exists when --extract was set
+  if [ ! -d $EXTRACT_PATH ]; then
+    echo "ERROR: You specified the --extract option to save an image to a file. You must specify an valid, existing directory to export the *.tar.gz"
+    exit 1
+  fi
 fi
 
 # if only one paramter was added, this cannot run properly, prompt usage dialog and end
-if [ $# -lt 2 ]; then
+if [[ -z $SOURCE_IMAGE ]] || [[ -z $SOURCE_IMAGE ]]; then
+  #if [ $# -lt 2 ]; then
+  echo "ERROR: Invalid parameter combination"
   usage
   exit 1
 fi
