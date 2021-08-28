@@ -15,27 +15,52 @@ LIST_OF_PLATFORM_IMAGES=""
 LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
 EXTRACT_PATH=""
+CLEANUP=0
+DEL_IMAGES=""
+DEL_MANIFESTS=""
 ARR_SI_TYPE=()
 ARR_SI_PATH=()
 ARR_SI_ARCH=()
 
 
 function usage(){
-  echo "Usage: pma2docker [options...] <SOURCE_IMAGE> <TARGET_IMAGE>"
+  echo "Usage: pma2docker [options] <SOURCE_IMAGE> <TARGET_IMAGE>"
   echo " "
   echo "Options:"
-  echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
-  echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
   echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
-  echo "  -e, --extract             - Save Source Image to a file"
-  echo "  -m, --merge-push          - Load one or more single images you would like to combine to a multiarch image and push it. You can specify multiple single image references:"
-  echo '                              Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
+  echo "  -c, --cleanup             - Delete the specified and created docker images from your local disk."
+  echo "  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
-  echo "      --help                - Show this info"
-  echo "      --versoin             - Show the version of this script"
+  echo " "
+  echo " "
+  echo "Usage: pma2docker [options] <SOURCE_IMAGE>"
+  echo " "
+  echo "Options:"
+  echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
+  echo "  -c, --cleanup             - Delete the specified and created docker images from your local disk."
+  echo "  -e, --extract             - Save Source Image to a file"
+  echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
+  echo "      --source-user         - Username for Login at Source Repository"
+  echo "      --source-password     - Password for Login at Source Repository"
+  echo " "
+  echo " "
+  echo "Usage: pma2docker [options] <TARGET_IMAGE>"
+  echo " "
+  echo "Options:"
+  echo "  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)"
+  echo "  -c, --cleanup             - Delete the specified and created docker images from your local disk."
+  echo "  -m, --merge-push          - Load one or more single images you would like to combine to a multiarch image and push it. You can specify multiple single image references:"
+  echo '                              Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
+  echo "      --target-user         - Username for Login at Target Repository"
+  echo "      --target-password     - Password for Login at Target Repository"
+  echo " "
+  echo " "
+  echo "Usage: pma2docker <version|help>"
+  echo " "
+  echo "List additional information abaout this tool"
 }
 
 function version(){
@@ -232,6 +257,7 @@ function tagImage(){
    docker tag "$1" "$2"
    if [[ $? -eq 0 ]]; then
      echo "Tagged Image from $1 to $2"
+     DEL_IMAGES="$DEL_IMAGES"" ""$2"
    else
      echo "Unable to tag new image for architecture $arch. Abort process..."
     exit 1
@@ -241,6 +267,7 @@ function tagImage(){
 function pullImage(){
     docker pull "$1"
     if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
+    DEL_IMAGES="$DEL_IMAGES"" ""$1"
 }
 
 function pushImage(){
@@ -272,6 +299,7 @@ function createMultiArchImage(){
 
   docker manifest create $image $platforms
   if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
+  DEL_MANIFESTS="$DEL_MANIFESTS"" ""$1"
 }
 
 function analyzeSourceManifest(){
@@ -337,6 +365,12 @@ function multiArchUpload(){
   fi;
 }
 
+function cleanup(){
+  echo "Delete Manifests..."
+  docker manifest rm $DEL_MANIFESTS
+  echo "Delete Images..."
+  docker image rm $DEL_IMAGES
+}
 
 
 ## START OF PROCESS ##
@@ -363,6 +397,8 @@ for arg in "$@"; do
   || [[ "$arg" == "-e" ]];                        then NEXT_ITEM="--extract"; NON_FLAG_CNT=1; continue; fi;
   if [[ "$arg" == "--merge-push" ]] \
   || [[ "$arg" == "-m" ]];                        then NEXT_ITEM="--merge-push"; NON_FLAG_CNT=1; continue; fi;
+  if [[ "$arg" == "--cleanup" ]] \
+  || [[ "$arg" == "-c" ]];                        then CLEANUP=1; continue; fi;
   if [[ $cnt -le $(( "$#" -$NON_FLAG_CNT )) ]]; then
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
@@ -370,7 +406,7 @@ for arg in "$@"; do
     if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
-    if [[ "$NEXT_ITEM" == "--merge-push" ]]; then prepareSingleImage; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--merge-push" ]];        then prepareSingleImage; NEXT_ITEM=""; continue; fi
   fi
   if [[ "$cnt" == $(( "$#" -1 )) ]] && \
      [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
@@ -393,6 +429,9 @@ if [[ ${#ARR_SI_PATH[@]} -gt "0" ]]; then
   pushImage $TARGET_IMAGE
   createMultiArchImage $TARGET_IMAGE "$LIST_OF_PLATFORM_IMAGES"
   pushManifest $TARGET_IMAGE
+  if [[ $CLEANUP == "1" ]]; then
+    cleanup
+  fi
   exit 0
 fi
 
@@ -426,3 +465,6 @@ checkExistingCredentials
 loginToRepositories
 copyMultiArchToLocal
 multiArchUpload
+if [[ $CLEANUP == "1" ]]; then
+  cleanup
+fi
