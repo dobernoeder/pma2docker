@@ -105,8 +105,9 @@ function validateAdjustImageTag(){
 }
 
 function checkAndGetNrOfManifestsInManifestList(){
+  echo "$SOURCE_IMAGE"
   # Check for Manifests in Image
-  NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length')
+  NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length') > /dev/null 2>&1
 
   re='^[0-9]+$'
   if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
@@ -141,7 +142,7 @@ function checkImageIsDocker(){
 }
 
 
-function checkExistingCredentials()={
+function checkExistingCredentials(){
   # Check if we do have credentials for source and target repository
   SOURCE_CREDS=0
   for cred in $docker_creds;
@@ -228,7 +229,51 @@ function prepareSingleImage(){
 
 }
 
+function tagImage(){
+   docker tag "$1" "$2"
+   if [[ $? -eq 0 ]]; then
+     echo "Tagged Image from $1 to $2"
+   else
+     echo "Unable to tag new image for architecture $arch. Abort process..."
+    exit 1
+   fi
+}
 
+function pullImage(){
+    docker pull "$1"
+    if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
+}
+
+function pushImage(){
+  echo "Pushing Image to docker ..."
+  docker push "$1"
+  if [[ ! $? -eq 0 ]]; then echo "Unable to push $1. Abort process..."; exit 1; fi
+}
+
+function pushManifest(){
+  echo "Pushing Manifest to Docker"
+  docker manifest push "$1"
+  if [[ ! $? -eq 0 ]]; then echo "Unable to push Manifest for $1. Abort process..."; exit 1; fi
+}
+
+function saveImage(){
+  echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
+  docker save -o $EXTRACT_PATH"/image-$arch.tar.gz" "$1"
+}
+
+function createMultiArchImage(){
+  local image="$1"
+  local platforms="$2"
+
+  check=$(docker manifest inspect "$image")
+
+  if [ $? -eq "0" ]; then
+    docker manifest rm "$image"  2>/dev/null
+  fi
+
+  docker manifest create $image $platforms
+  if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
+}
 
 
 
@@ -263,13 +308,15 @@ for arg in "$@"; do
   || [[ "$arg" == "-e" ]];                        then NEXT_ITEM="--extract"; NON_FLAG_CNT=1; continue; fi;
   if [[ "$arg" == "--from-single-image" ]] \
   || [[ "$arg" == "-i" ]];                        then NEXT_ITEM="--from-single-image"; NON_FLAG_CNT=1; continue; fi;
-  if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
-  if [[ "$NEXT_ITEM" == "--from-single-image" ]]; then prepareSingleImage; NEXT_ITEM=""; continue; fi
+  if [[ $cnt -le $(( "$#" -$NON_FLAG_CNT )) ]]; then
+    if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--target-password" ]];   then TARGET_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--only-arch" ]];         then LIST_OF_ARCHS="$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--extract" ]];           then EXTRACT_PATH="$arg"; ONLY_SINGLE_IMAGES=1; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--from-single-image" ]]; then prepareSingleImage; NEXT_ITEM=""; continue; fi
+  fi
   if [[ "$cnt" == $(( "$#" -1 )) ]] && \
      [[ "$NON_FLAG_CNT" == "2" ]];                then SOURCE_IMAGE="$arg"; continue; fi;
   if [[ "$cnt" == $(( "$#" -0 )) ]] && \
@@ -333,17 +380,14 @@ do
   PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
   if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
     echo " $arch ---------------------------------------------------------------------------------------"
-    docker pull "$SOURCE_IMAGE""@""$digest"
-    if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
-    docker tag  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
-    if [[ ! $? -eq 0 ]]; then echo "Unable to tag new image for architecture $arch. Abort process..."; exit 1; fi
+    pullImage "$SOURCE_IMAGE""@""$digest"
+    tagImage  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
     if [[ $ONLY_PULL_SPLIT == "0" ]] && [[ -z $EXTRACT_PATH ]]; then
-      docker push "$PLATFORM_TARGET_IMAGE"
-      if [[ ! $? -eq 0 ]]; then echo "Unable to push image for architecture $arch. Abort process..."; exit 1; fi
+      pushImage "$PLATFORM_TARGET_IMAGE"
     fi
     if [[ ! -z $EXTRACT_PATH ]]; then
       echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
-      docker save -o $EXTRACT_PATH"/image-$arch.tar.gz" "$PLATFORM_TARGET_IMAGE"
+      saveImage "$PLATFORM_TARGET_IMAGE"
     fi;
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
   fi;
@@ -356,19 +400,9 @@ done;
 # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
 echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
 if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-  check=$(docker manifest inspect "$TARGET_IMAGE")
-
-  if [ $? -eq "0" ]; then
-    docker manifest rm "$TARGET_IMAGE"  2>/dev/null
-  fi
-
-  docker manifest create $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
-  if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
-
+  createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
   if [[ -z $EXTRACT_PATH ]]; then
-    echo "Pushing Image to docker ..."
-    docker manifest push "$TARGET_IMAGE"
-    if [[ ! $? -eq 0 ]]; then echo "Unable to push multi-arch manifest. Abort process..."; exit 1; fi
+    pushManifest "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
   fi;
 else
   echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
