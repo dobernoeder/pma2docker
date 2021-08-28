@@ -44,8 +44,8 @@ function version(){
 
 function dependencyCheck(){
   # Check installed tools: bash, jq, docker
-  bash --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
-  jq --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
+  bash --version > /dev/null 2>&1   || { echo "ERROR: Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
+  jq --version > /dev/null 2>&1     || { echo "ERROR: Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
   docker --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'docker' is not installed. Please make sure that 'docker' ist installed and configured properly"; exit 1; }
 
   # Check if command docker manifest is available
@@ -295,9 +295,47 @@ function getSingleImages(){
   done
 }
 
+function copyMultiArchToLocal(){
+  # Cycle through all Manifests in the manifest of the Manifest-List
+  for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
+  do
+    analyzeSourceManifest
+    PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
+    if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
+      echo " $arch ---------------------------------------------------------------------------------------"
+      pullImage "$SOURCE_IMAGE""@""$digest"
+      tagImage  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
+      if [[ $ONLY_PULL_SPLIT == "0" ]] && [[ -z $EXTRACT_PATH ]]; then
+        pushImage "$PLATFORM_TARGET_IMAGE"
+      fi
+      if [[ ! -z $EXTRACT_PATH ]]; then
+        echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
+        saveImage "$PLATFORM_TARGET_IMAGE"
+      fi;
+      LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
+    fi;
 
+    # Reset values for $arch and $digest
+    arch=""
+    digest=""
+  done;
+}
 
-
+function multiArchUpload(){
+  # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
+  echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
+  if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
+    createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+    if [[ -z $EXTRACT_PATH ]]; then
+      pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
+    fi;
+  else
+    echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
+    if [[ ! -z $EXTRACT_PATH ]]; then
+      echo " WARNING: Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
+    fi
+  fi;
+}
 
 
 
@@ -380,47 +418,11 @@ if [ $# -lt 2 ]; then
   exit 1
 fi
 
+# Normal Mode: Download Multi-Arch-Image and Copy it to another Repo
 validateAdjustImageTag
 checkAndGetNrOfManifestsInManifestList
 checkImageIsDocker
 checkExistingCredentials
 loginToRepositories
-
-
-# Cycle through all Manifests in the manifest of the Manifest-List
-for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
-do
-  analyzeSourceManifest
-  PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
-  if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
-    echo " $arch ---------------------------------------------------------------------------------------"
-    pullImage "$SOURCE_IMAGE""@""$digest"
-    tagImage  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
-    if [[ $ONLY_PULL_SPLIT == "0" ]] && [[ -z $EXTRACT_PATH ]]; then
-      pushImage "$PLATFORM_TARGET_IMAGE"
-    fi
-    if [[ ! -z $EXTRACT_PATH ]]; then
-      echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
-      saveImage "$PLATFORM_TARGET_IMAGE"
-    fi;
-    LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
-  fi;
-
-  # Reset values for $arch and $digest
-  arch=""
-  digest=""
-done;
-
-# Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
-echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
-if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-  createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
-  if [[ -z $EXTRACT_PATH ]]; then
-    pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
-  fi;
-else
-  echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
-  if [[ ! -z $EXTRACT_PATH ]]; then
-    echo " WARNING: Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
-  fi
-fi;
+copyMultiArchToLocal
+multiArchUpload
