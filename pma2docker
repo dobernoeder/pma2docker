@@ -308,8 +308,13 @@ function loginToRepositories(){
 
 
 function prepareSingleImage(){
+   local isImage="0"
+   local isOci="0"
 
-   if [[ $(echo $arg | grep -E "^type=.*,path=.*,arch=.*$" | wc -l) -lt 1 ]]; then
+   if [[ $(echo $arg | grep -E "^type=image,path=.*,arch=.*$" | wc -l) -eq "1" ]]; then isImage="1"; fi
+   if [[ $(echo $arg | grep -E "^type=oci,name=.*,path=.*,arch=.*$" | wc -l) -eq "1" ]]; then isOci="1"; fi
+
+   if [[ "$isImage" == "0" ]] && [[ "$isOci" == "0" ]]; then
      echo "ERROR: Specified single image definition is not valid. Please enter a specification string to address image in this form:"
      echo '     --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
      echo "     "
@@ -318,10 +323,19 @@ function prepareSingleImage(){
      exit 1
    fi
 
-   ARR_SI_TYPE+=("$(echo $arg | cut -d',' -f1 | cut -d'=' -f2 )")
-   ARR_SI_PATH+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
-   ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
+   if [[ "$isImage" -eq "1" ]]; then
+     ARR_SI_TYPE+=("$(echo $arg | cut -d',' -f1 | cut -d'=' -f2 )")
+     ARR_SI_NAME+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
+     ARR_SI_PATH+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
+     ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
+   fi;
 
+   if [[ "$isOci" -eq "1" ]]; then
+     ARR_SI_TYPE+=("$(echo $arg | cut -d',' -f1 | cut -d'=' -f2 )")
+     ARR_SI_NAME+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
+     ARR_SI_PATH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
+     ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f4 | cut -d'=' -f2 )")
+   fi;
 }
 
 function tagImage(){
@@ -335,10 +349,26 @@ function tagImage(){
    fi
 }
 
+function checkImportFile(){
+  local importFile=$1
+
+  # Check if extract path exists when --extract was set
+  if [ ! -d $importFile ]; then
+    echo "ERROR: You specified an image file for import. The Image does not exist. You must specify an valid, existing directory as a *.tar.gz which is compliant to oci specification."
+    exit 1
+  fi
+}
+
+function importImage(){
+  echo "Load Image $1 from $2"
+  docker import "$2" "$1"
+  if [[ ! $? -eq 0 ]]; then echo "ERROR: Was not able to import image $1 from file $2. Please make sure, that the import file is a *.tar.gz valid to the oci specification."; exit 1; fi;
+}
+
 function pullImage(){
-    docker pull "$1"
-    if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
-    DEL_IMAGES="$DEL_IMAGES"" ""$1"
+  docker pull "$1"
+  if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
+  DEL_IMAGES="$DEL_IMAGES"" ""$1"
 }
 
 function pushImage(){
@@ -388,7 +418,14 @@ function getSingleImages(){
 
   for (( i=0; i<${#ARR_SI_PATH[@]}; i++ ));
   do
-    pullImage ${ARR_SI_PATH[$i]}
+    if [[ ${ARR_SI_TYPE[$i]} == "image" ]]; then
+      pullImage "${ARR_SI_PATH[$i]}"
+    elif [[ ${ARR_SI_TYPE[$i]} == "oci" ]]; then
+      importImage "${ARR_SI_NAME[$i]}" "${ARR_SI_PATH[$i]}"
+    else
+     echo "ERROR: Internal process error due to invalid type specification for single image no. $i"
+     exit 1
+    fi
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" "${ARR_SI_PATH[$i]}
   done
 }
