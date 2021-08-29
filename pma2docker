@@ -339,9 +339,12 @@ function prepareSingleImage(){
 }
 
 function tagImage(){
-   docker tag "$1" "$2"
+   local srcTag="$1"
+   local destTag="$2"
+
+   docker tag "$srcTag" "$destTag"
    if [[ $? -eq 0 ]]; then
-     echo "Tagged Image from $1 to $2"
+     echo "Tagged Image from $srcTag to $destTag"
      DEL_IMAGES="$DEL_IMAGES"" ""$2"
    else
      echo "Unable to tag new image for architecture $arch. Abort process..."
@@ -562,6 +565,7 @@ fi
 
 # Additional parameter inspection and handling
 if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
+  TARGET_IMAGE="$SOURCE_IMAGE"
   if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
     if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
       echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
