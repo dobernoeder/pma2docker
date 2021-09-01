@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Import Library
+. lib/logMod/logMod
+
 # Supported Program Modes
 NOT_INITIALIZED_MODE="-1"
 INFO_MODE="0"
@@ -12,7 +15,8 @@ PGM_MODE="$NOT_INITIALIZED_MODE"
 NON_FLAG_CNT=2
 PGM_SETBY=""
 PARM_CNT="$#"
-VERSION=1.3.0
+VERSION=1.4.0
+MAINTAINER="David Obernöder"
 ONLY_SINGLE_IMAGES=0
 ONLY_PULL_SPLIT=0
 SOURCE_IMAGE=""
@@ -76,7 +80,7 @@ function usage(){
 }
 
 function version(){
-  echo "pma2docker v.$VERSION"
+  logMe $LOG_CUSTOM "v.$VERSION\nMaintainer: $MAINTAINER" "pma2docker"
 }
 
 function setPgmMode(){
@@ -88,6 +92,7 @@ function setPgmMode(){
       PGM_MODE="$SOURCE_MODE"
       PGM_SETBY="$arg"
       NON_FLAG_CNT=1
+      logMe $LOG_VERBOSE "Set Program Mode to 'Source Mode'"
     else
       PGM_MODE="$PGM_MODE"
       PGM_SETBY="$PGM_SETBY"
@@ -99,6 +104,7 @@ function setPgmMode(){
       PGM_MODE="$TARGET_MODE"
       PGM_SETBY="$arg"
       NON_FLAG_CNT=1
+      logMe $LOG_VERBOSE "Set Program Mode to 'Target Mode'"
     else
       PGM_MODE="$PGM_MODE"
       PGM_SETBY="$PGM_SETBY"
@@ -109,31 +115,36 @@ function setPgmMode(){
     PGM_MODE="$PGM_MODE"
     PGM_SETBY="$PGM_SETBY"
     NON_FLAG_CNT="$NON_FLAG_CNT"
+    logMe $LOG_VERBOSE "Keep Program Mode to $PGM_MODE"
     return 0
   fi
 
   if [[ $PGM_MODE -ne $1 ]] && [[ $NOT_INITIALIZED_MODE -ne "-1" ]]; then
-    echo "ERROR: Invalid parameter combination. '""$arg""' is not compatible with '""$PGM_SETBY""'"
+    logMe $LOG_ERROR "Invalid parameter combination. '""$arg""' is not compatible with '""$PGM_SETBY""'"
     exit 1
   fi
   if   [[ "$requestedMode" == "$INFO_MODE" ]]; then
     PGM_MODE="$INFO_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=0
+    logMe $LOG_VERBOSE "Set Program Mode to 'Info Mode'"
   elif [[ "$requestedMode" == "$NORMAL_MODE" ]]; then
     PGM_MODE="$NORMAL_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=2
+    logMe $LOG_VERBOSE "Set Program Mode to 'Normal Mode'"
   elif [[ "$requestedMode" == "$SOURCE_MODE" ]]; then
     PGM_MODE="$SOURCE_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=1
+    logMe $LOG_VERBOSE "Set Program Mode to 'Source Mode'"
   elif [[ "$requestedMode" == "$TARGET_MODE" ]]; then
     PGM_MODE="$TARGET_MODE"
     PGM_SETBY="$arg"
     NON_FLAG_CNT=1
+    logMe $LOG_VERBOSE "Set Program Mode to 'Target Mode'"
   else
-    echo "ERROR: Illegal Mode selected by unknown problem. Abort..."
+    logMe $LOG_ERROR "Illegal Mode selected by unknown problem. Abort..."
     exit 1
   fi
   return 0
@@ -141,16 +152,19 @@ function setPgmMode(){
 
 function dependencyCheck(){
   # Check installed tools: bash, jq, docker
-  bash --version > /dev/null 2>&1   || { echo "ERROR: Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
-  jq --version > /dev/null 2>&1     || { echo "ERROR: Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
-  docker --version > /dev/null 2>&1 || { echo "ERROR: Dependency 'docker' is not installed. Please make sure that 'docker' ist installed and configured properly"; exit 1; }
+  bash --version > /dev/null 2>&1   || { logMe $LOG_ERROR "Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
+  jq --version > /dev/null 2>&1     || { logMe $LOG_ERROR "Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
+  docker --version > /dev/null 2>&1 || { logMe $LOG_ERROR "Dependency 'docker' is not installed. Please make sure that 'docker' ist installed and configured properly"; exit 1; }
+  logMe $LOG_VERBOSE "Dependency Check for bash, jq, docker was successful!"
 
   # Check if command docker manifest is available
-  [ $(docker manifest --help | grep "docker manifest COMMAND --help" | wc -l) -ge "1" ] || { echo "It loooks like there is noch command 'docker manifest' available on the system. Please verify, if you can run 'docker manifest --help' successfully on the system. You may need to enable docker's experimental client features!"; exit 1; }
+  [ $(docker manifest --help | grep "docker manifest COMMAND --help" | wc -l) -ge "1" ] || { logMe $LOG_ERROR "It loooks like there is noch command 'docker manifest' available on the system. Please verify, if you can run 'docker manifest --help' successfully on the system. You may need to enable docker's experimental client features!"; exit 1; }
+  logMe $LOG_VERBOSE "Dependency Check for command 'docker manifest' was successful!"
 
   # Check if command docker buildx is available
   docker_server_start=$(docker info | grep -En "^Server" | cut -d':' -f1)
   client_plugins=$(docker info | head -n $(( $docker_server_start - 2)) | grep -A 100 'Plugins' | grep -v "Plugins" | awk '{ print; $1 }' | tr -d ' ' | cut -d':' -f1)
+  logMe $LOG_VERBOSE "Got installed plugins for client: $(echo -n $client_plugins)"
 
   BUILDX_ENABLED="0"
   for plugin in $client_plugins
@@ -161,8 +175,10 @@ function dependencyCheck(){
   done;
 
   if [[ "$BUILDX_ENABLED" = "0" ]]; then
-    echo "ERROR: Docker Plugin 'buildx' is needed to create multiarchitectural images. You can find neccessary information here: https://docs.docker.com/buildx/working-with-buildx/"
+    logMe $LOG_ERROR "Docker Plugin 'buildx' is needed to create multiarchitectural images. You can find neccessary information here: https://docs.docker.com/buildx/working-with-buildx/"
     exit 1
+  else
+    logMe $LOG_VERBOSE "Docker Plugin 'buildx' was found successfully."
   fi
 }
 
@@ -185,19 +201,29 @@ function validateArch(){
     if [[ $arch == $a ]]; then match="1"; fi
   done
 
-  if [[ $match == "1" ]]; then return 0; else return 1; fi;
+  if [[ $match == "1" ]]; then
+    logMe $LOG_VERBOSE "Architecture matching default architecture list. Arch is $arch"
+    return 0
+  else
+    logMe $LOG_WARNING "Architecture is not a value from default architecture list. This may could cause problems."
+    return 1
+  fi;
 }
 
 function validateAdjustImageTag(){
   ## Pre-Checks for Parameter
   if ( [[ $PGM_MODE == "$NORMAL_MODE" ]] || [[ $PGM_MODE == "$SOURCE_MODE" ]] ) && [[ $(basename $SOURCE_IMAGE | grep ":" | wc -l) -eq "0" ]]; then
-    echo "NOTICE: It looks like you did not specify a tag on source file. Asume 'latest' as tag."
+    logMe $LOG_INFO "It looks like you did not specify a tag on source file. Asume 'latest' as tag."
     SOURCE_IMAGE="$SOURCE_IMAGE:latest"
+  else
+    logMe $LOG_VERBOSE "Source Image is fully qulified with tag: $SOURCE_IMAGE"
   fi
 
   if ( [[ $PGM_MODE == "$NORMAL_MODE" ]] || [[ $PGM_MODE == "$TARGET_MODE" ]] ) && [[ $(basename $TARGET_IMAGE | grep ":" | wc -l) -eq "0" ]]; then
-    echo "NOTICE: It looks like you did not specify a tag on target file. Asume 'latest' as tag."
+    logMe $LOG_INFO "It looks like you did not specify a tag on target file. Asume 'latest' as tag."
     TARGET_IMAGE="$TARGET_IMAGE:latest"
+  else
+    logMe $LOG_VERBOSE "Target Image is fully qulified with tag: $SOURCE_IMAGE"
   fi
 }
 
@@ -207,15 +233,17 @@ function checkAndGetNrOfManifestsInManifestList(){
 
   re='^[0-9]+$'
   if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
-    echo "It looks like the Source Docker-Image is not suitable for this action."
-    echo "It either does not exist or there was an error checking the provided Image."
+    logMe $LOG_ERROR "It looks like the Source Docker-Image is not suitable for this action.\nIt either does not exist or there was an error checking the provided Image."
     exit 1
+  else
+    logMe $LOG_VERBOSE "Docker Image Manifest for Source is valid, manifest contains $NR_OF_MANIFESTS images."
   fi
 
   if [ $NR_OF_MANIFESTS -eq 0 ]; then
-    echo "It looks like the Source Docker-Image is not suitable for this action."
-    echo "Please provide an existing multi architecture image. You can only copy existing multi-arch images!"
+    logMe $LOG_ERROR "It looks like the Source Docker-Image is not suitable for this action.\nPlease provide an existing multi architecture image. You can only copy existing multi-arch images!"
     exit 1
+  else
+    logMe $LOG_VERBOSE "Docker Image Manifest for Target is valid, manifest contains $NR_OF_MANIFESTS images."
   fi
 }
 
@@ -230,9 +258,11 @@ function checkImageIsDocker(){
   TARGET_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
 
   if [[ $SOURCE_IS_DOCKER = "1" ]] && [[ $(echo $SOURCE_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+    logMe $LOG_VERBOSE "Recognized Source Image as a image at docker hub. Add 'docker.io' as Prefix for Source Image"
     SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
   fi
   if [[ $TARGET_IS_DOCKER = "1" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
+    logMe $LOG_VERBOSE "Recognized Target Image as a image at docker hub. Add 'docker.io' as Prefix for Source Image"
     TARGET_IMAGE="docker.io/"$TARGET_IMAGE
   fi
 }
@@ -244,6 +274,7 @@ function checkExistingCredentials(){
   for cred in $docker_creds;
   do
     if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $cred =~ .*docker\.io.* ]]; then
+      logMe $LOG_VERBOSE "Found entry for login credentials on Source Server, try to connect with them"
       SOURCE_CREDS=1
       break;
     fi
@@ -253,6 +284,7 @@ function checkExistingCredentials(){
   for cred in $docker_creds;
   do
     if [[ $TARGET_IMAGE =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
+      logMe $LOG_VERBOSE "Found entry for login credentials on Target Server, try to connect with them"
       TARGET_CREDS=1
       break;
     fi
@@ -263,45 +295,41 @@ function checkExistingCredentials(){
 function loginToRepositories(){
   # Validate checks for Repo-Images
   if [[ $SOURCE_CREDS == 0 ]]; then
-    echo "WARNING: There are no credentials to login to source repository, you may need to login to access the repo."
+    logMe $LOG_WARNING "There are no credentials to login to source repository, you may need to login to access the repo."
   fi
   if [[ $TARGET_CREDS == 0 ]]; then
-    echo "WARNING: There are no credentials to login to target repository, you may need to login to write to the repo."
+    logMe $LOG_WARNING "There are no credentials to login to target repository, you may need to login to write to the repo."
   fi
 
   if [[ ! -z $SOURCE_USER ]]; then
-    echo "Try to login to Source repository with provided information..."
+    logMe $LOG_INFO "Try to login to Source repository with provided information..."
     if [[ -z $SOURCE_PASSWORD ]]; then
+      logMe $LOG_INFO "Please enter password for Source Repository:"
       read -s -p "Please enter password for Source Repository:" SOURCE_PASSWORD
     fi
     SOURCE_SERVER=$(echo $SOURCE_IMAGE | cut -d'/' -f1)
     docker login $SOURCE_SERVER --username $SOURCE_USER --password $SOURCE_PASSWORD > /dev/null 2>&1
     if [[ ! $? -eq 0 ]]; then
-      echo " "
-      echo "Login to Source Repository was not successful, leaving..."
+      logMe $LOG_ERROR "Login to Source Repository was not successful to $SOURCE_SERVER, leaving..."
       exit 1
     else
-      echo "No login possible with this user/password combination to $SOURCE_SERVER"
-      echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
-      echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
+      logMe $LOG_INFO "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works.\nYou do not need to specify credentials here, when you have already logged in with 'docker login'"
     fi
   fi;
 
   if [[ ! -z $TARGET_USER ]]; then
-    echo "Try to login to Target repository with provided information..."
+    logMe $LOG_INFO "Try to login to Target repository with provided information..."
     if [[ -z $TARGET_PASSWORD ]]; then
+      logMe $LOG_INFO "Please enter password for Target Repository:"
       read -s -p "Please enter password for Target Repository:" TARGET_PASSWORD
     fi
     TARGET_SERVER=$(echo $TARGET_IMAGE | cut -d'/' -f1)
     docker login $TARGET_SERVER --username $TARGET_USER --password $TARGET_PASSWORD > /dev/null 2>&1
     if [[ ! $? -eq 0 ]]; then
-      echo " "
-      echo "Login to Target Repository was not successful, leaving..."
+      logMe $LOG_ERROR "Login to Target Repository was not successful TO $TARGET_SERVER, leaving..."
       exit 1
     else
-      echo "No login possible with this user/password combination to $TARGET_SERVER"
-      echo "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works."
-      echo "You do not need to specify credentials here, when you have already logged in with 'docker login'"
+      logMe $LOG_INFO "You may want to login with your credentials manually before passing user/password to this program to be sure, that your login works.\nYou do not need to specify credentials here, when you have already logged in with 'docker login'"
     fi
   fi;
 }
@@ -316,12 +344,10 @@ function prepareSingleImage(){
    if [[ $(echo $arg | grep -E "^type=oci,name=.*,path=.*,arch=.*$" | wc -l) -eq "1" ]]; then isOci="1"; fi
 
    if [[ "$isImage" == "0" ]] && [[ "$isOci" == "0" ]]; then
-     echo "ERROR: Specified single image definition is not valid. Please enter a specification string to address image in this form:"
-     echo '     --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
-     echo "     "
-     echo ' Example: pma2docker --merge-push "type=image,dobernoeder/helloworld:latest,arch=amd64" dobernoeder/newworld:latest-amd64'
-     echo "     "
+     logMe $LOG_ERROR 'Specified single image definition is not valid. Please enter a specification string to address image in this form:\n     --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"\n\n Example: pma2docker --merge-push "type=image,dobernoeder/helloworld:latest,arch=amd64" dobernoeder/newworld:latest-amd64\n'
      exit 1
+   else
+     logMe $LOG_VERBOSE "Found a valid image specification string: $arg"
    fi
 
    if [[ "$isImage" -eq "1" ]]; then
@@ -329,6 +355,7 @@ function prepareSingleImage(){
      ARR_SI_NAME+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
      ARR_SI_PATH+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
      ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
+     logMe $LOG_VERBOSE "Recognized input specification for image type"
    fi;
 
    if [[ "$isOci" -eq "1" ]]; then
@@ -336,6 +363,7 @@ function prepareSingleImage(){
      ARR_SI_NAME+=("$(echo $arg | cut -d',' -f2 | cut -d'=' -f2 )")
      ARR_SI_PATH+=("$(echo $arg | cut -d',' -f3 | cut -d'=' -f2 )")
      ARR_SI_ARCH+=("$(echo $arg | cut -d',' -f4 | cut -d'=' -f2 )")
+     logMe $LOG_VERBOSE "Recognized input specification for OCI type"
    fi;
 }
 
@@ -345,10 +373,10 @@ function tagImage(){
 
    docker tag "$srcTag" "$destTag"
    if [[ $? -eq 0 ]]; then
-     echo "Tagged Image from $srcTag to $destTag"
+     logMe $LOG_INFO "Tagged Image from $srcTag to $destTag"
      DEL_IMAGES="$DEL_IMAGES"" ""$2"
    else
-     echo "Unable to tag new image for architecture $arch. Abort process..."
+     logMe $LOG_ERROR "Unable to tag new image for architecture $arch. Abort process..."
     exit 1
    fi
 }
@@ -358,37 +386,38 @@ function checkImportFile(){
 
   # Check if extract path exists when --extract was set
   if [ ! -d $importFile ]; then
-    echo "ERROR: You specified an image file for import. The Image does not exist. You must specify an valid, existing directory as a *.tar.gz which is compliant to oci specification."
+    logMe $LOG_ERROR "You specified an image file for import. The Image does not exist. You must specify an valid, existing directory as a *.tar.gz which is compliant to oci specification."
     exit 1
   fi
 }
 
 function importImage(){
-  echo "Load Image $1 from $2"
+  logMe $LOG_INFO "Load Image $1 from $2"
   docker import "$2" "$1"
-  if [[ ! $? -eq 0 ]]; then echo "ERROR: Was not able to import image $1 from file $2. Please make sure, that the import file is a *.tar.gz valid to the oci specification."; exit 1; fi;
+  if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Was not able to import image $1 from file $2. Please make sure, that the import file is a *.tar.gz valid to the oci specification."; exit 1; fi;
 }
 
 function pullImage(){
+  logMe $LOG_INFO "Pull image..."
   docker pull "$1"
-  if [[ ! $? -eq 0 ]]; then echo "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
+  if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
   DEL_IMAGES="$DEL_IMAGES"" ""$1"
 }
 
 function pushImage(){
-  echo "Pushing Image to docker ..."
+  logMe $LOG_INFO "Pushing Image to docker ..."
   docker push "$1"
-  if [[ ! $? -eq 0 ]]; then echo "Unable to push $1. Abort process..."; exit 1; fi
+  if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to push $1. Abort process..."; exit 1; fi
 }
 
 function pushManifest(){
-  echo "Pushing Manifest to Docker"
+  logMe $LOG_INFO "Pushing Manifest to Docker"
   docker manifest push "$1"
-  if [[ ! $? -eq 0 ]]; then echo "Unable to push Manifest for $1. Abort process..."; exit 1; fi
+  if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to push Manifest for $1. Abort process..."; exit 1; fi
 }
 
 function saveImage(){
-  echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
+  logMe $LOG_INFO "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
   docker save -o $EXTRACT_PATH"/image-$arch.tar.gz" "$1"
 }
 
@@ -402,7 +431,7 @@ function createMultiArchImage(){
     docker manifest rm "$image"  2>/dev/null
   fi
   docker manifest create $image $platforms
-  if [[ ! $? -eq 0 ]]; then echo "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
+  if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
   DEL_MANIFESTS="$DEL_MANIFESTS"" ""$1"
 }
 
@@ -411,6 +440,7 @@ function analyzeSourceManifest(){
   manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
   digest=$(echo $manifest | jq -r '.digest')
   arch=$(echo $manifest | jq -r '.platform.architecture')
+  logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
 
   # Check if we have a variant for an architecture, for example arm/v7
   if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
@@ -427,11 +457,12 @@ function getSingleImages(){
     elif [[ ${ARR_SI_TYPE[$i]} == "oci" ]]; then
       importImage "${ARR_SI_NAME[$i]}" "${ARR_SI_PATH[$i]}"
     else
-     echo "ERROR: Internal process error due to invalid type specification for single image no. $i"
+     logMe $LOG_FATAL "Internal process error due to invalid type specification for single image no. $i"
      exit 1
     fi
     LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" "${ARR_SI_PATH[$i]}
   done
+  logMe $LOG_VERBOSE "Recognized the following list of single images: $LIST_OF_PLATFORM_IMAGES"
 }
 
 function copyMultiArchToLocal(){
@@ -441,14 +472,14 @@ function copyMultiArchToLocal(){
     analyzeSourceManifest
     PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
     if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
-      echo " $arch ---------------------------------------------------------------------------------------"
+      logMe $LOG_INFO " $arch ---------------------------------------------------------------------------------------"
       pullImage "$SOURCE_IMAGE""@""$digest"
       tagImage  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
       if [[ $ONLY_PULL_SPLIT == "0" ]] && [[ -z $EXTRACT_PATH ]]; then
         pushImage "$PLATFORM_TARGET_IMAGE"
       fi
       if [[ ! -z $EXTRACT_PATH ]]; then
-        echo "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
+        logMe $LOG_INFO "Saving image file to $EXTRACT_PATH/image-$arch.tar.gz ..."
         saveImage "$PLATFORM_TARGET_IMAGE"
       fi;
       LIST_OF_PLATFORM_IMAGES="$LIST_OF_PLATFORM_IMAGES"" ""$PLATFORM_TARGET_IMAGE"
@@ -462,24 +493,24 @@ function copyMultiArchToLocal(){
 
 function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
-  echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
+  logMe $LOG_INFO " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
     createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
     if [[ -z $EXTRACT_PATH ]]; then
       pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
     fi;
   else
-    echo " --> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
+    logMe $LOG_WARNING "--> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
     if [[ ! -z $EXTRACT_PATH ]]; then
-      echo " WARNING: Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
+      logMe $LOG_WARNING "Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
     fi
   fi;
 }
 
 function cleanup(){
-  echo "Delete Manifests..."
+  logMe $LOG_INFO "Delete Manifests..."
   docker manifest rm $DEL_MANIFESTS 2>/dev/null
-  echo "Delete Images..."
+  logMe $LOG_INFO "Delete Images..."
   docker image rm $DEL_IMAGES
 }
 
@@ -529,14 +560,13 @@ for arg in "$@"; do
   if [[ "$PGM_MODE" == "$SOURCE_MODE" ]]; then
     if [[ "$cnt" == $(( "$PARM_CNT" -0 )) ]];              then SOURCE_IMAGE="$arg"; continue; fi;
   fi
-  echo "Unknown parameter: $arg"
-  echo " "
+  logMe $LOG_ERROR "Unknown parameter: $arg"
   usage
   exit 1
 done
 
 if [[ "$PGM_MODE" = "$TARGET_MODE" ]]; then
-  # When --merge-push is specified do special download handling
+  logMe $LOG_VERBOSE "Entering Target Image mode"
   checkImageIsDocker
   getSingleImages
   tagImage ${ARR_SI_PATH[0]} $TARGET_IMAGE
@@ -544,13 +574,15 @@ if [[ "$PGM_MODE" = "$TARGET_MODE" ]]; then
   createMultiArchImage $TARGET_IMAGE "$LIST_OF_PLATFORM_IMAGES"
   pushManifest $TARGET_IMAGE
   if [[ $CLEANUP == "1" ]]; then
+    logMe $LOG_VERBOSE "Cleanup got triggered delete images $DEL_IMAGES"
+    logMe $LOG_VERBOSE "Cleanup got triggered delete manifests $DEL_MANIFESTS"
     cleanup
   fi
   exit 0
 fi
 
 if [[ "$PGM_MODE" = "$NORMAL_MODE" ]]; then
-  # Normal Mode: Download Multi-Arch-Image and Copy it to another Repo
+  logMe $LOG_VERBOSE "Entering normal mode"
   validateAdjustImageTag
   checkAndGetNrOfManifestsInManifestList
   checkImageIsDocker
@@ -559,6 +591,8 @@ if [[ "$PGM_MODE" = "$NORMAL_MODE" ]]; then
   copyMultiArchToLocal
   multiArchUpload
   if [[ $CLEANUP == "1" ]]; then
+    logMe $LOG_VERBOSE "Cleanup got triggered delete images $DEL_IMAGES"
+    logMe $LOG_VERBOSE "Cleanup got triggered delete manifests $DEL_MANIFESTS"
     cleanup
   fi
   exit 0
@@ -569,7 +603,7 @@ if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
   TARGET_IMAGE="$SOURCE_IMAGE"
   if [[ $ONLY_PULL_SPLIT == "1" ]] || [[ ! -z $EXTRACT_PATH ]]; then
     if [ ! -z $TARGET_USER ] || [ ! -z $TARGET_PASSWORD ]; then
-      echo "WARNING: --target-user and --target-password are not applicable with --pull-split and will be ignored!"
+      logMe $LOG_WARNING " --target-user and --target-password are not applicable with --pull-split and will be ignored!"
       TARGET_USER=""
       TARGET_PASSWORD=""
     fi
@@ -577,7 +611,7 @@ if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
 
   # Check if extract path exists when --extract was set
   if [ ! -d $EXTRACT_PATH ]; then
-    echo "ERROR: You specified the --extract option to save an image to a file. You must specify an valid, existing directory to export the *.tar.gz"
+    logMe $LOG_ERROR "You specified the --extract option to save an image to a file. You must specify an valid, existing directory to export the *.tar.gz"
     exit 1
   fi
 
@@ -588,6 +622,8 @@ if [[ "$PGM_MODE" = "$SOURCE_MODE" ]]; then
   loginToRepositories
   copyMultiArchToLocal
   if [[ $CLEANUP == "1" ]]; then
+    logMe $LOG_VERBOSE "Cleanup got triggered delete images $DEL_IMAGES"
+    logMe $LOG_VERBOSE "Cleanup got triggered delete manifests $DEL_MANIFESTS"
     cleanup
   fi
   exit 0
@@ -596,7 +632,7 @@ fi
 
 # if only one paramter was added, this cannot run properly, prompt usage dialog and end
 if [[ -z $SOURCE_IMAGE ]] || [[ -z $TARGET_IMAGE ]]; then
-  echo "ERROR: Invalid parameter combination"
+  logMe $LOG_ERROR "Invalid parameter combination"
   usage
   exit 1
 fi
