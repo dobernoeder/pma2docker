@@ -72,6 +72,7 @@ function usage(){
   echo "Usage: pma2docker <version|help>"
   echo " "
   echo "List additional information abaout this tool"
+  echo " "
 }
 
 function version(){

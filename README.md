@@ -1,6 +1,45 @@
 # pma2docker - Push MultiArch 2 Docker
 This is a script to copy multi architecture docker images from one repository to another or to a new tag without loosing platforms. This works with docker.io and other repositories.
 
+```bash
+Usage: pma2docker [options] <SOURCE_IMAGE> <TARGET_IMAGE>
+ 
+Options:
+  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)
+  -c, --cleanup             - Delete the specified and created docker images from your local disk.
+  -s, --only-single-images  - Push only the single images with suffix, e.g. *-amd64, *-arm64, *-armv7
+      --source-user         - Username for Login at Source Repository
+      --source-password     - Password for Login at Source Repository
+      --target-user         - Username for Login at Target Repository
+      --target-password     - Password for Login at Target Repository
+ 
+ 
+Usage: pma2docker [options] <SOURCE_IMAGE>
+ 
+Options:
+  -a, --only-arch           - Split source multi-arch image and keep only specific arch (split multiple arch with comma: amd64,arm64)
+  -c, --cleanup             - Delete the specified and created docker images from your local disk.
+  -e, --extract             - Save Source Image to a file
+  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere
+      --source-user         - Username for Login at Source Repository
+      --source-password     - Password for Login at Source Repository
+ 
+ 
+Usage: pma2docker [options] <TARGET_IMAGE>
+ 
+Options:
+  -c, --cleanup             - Delete the specified and created docker images from your local disk.
+  -m, --merge-push          - Load one or more single images you would like to combine to a multiarch image and push it. You can specify multiple single image references:
+                              Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"
+      --target-user         - Username for Login at Target Repository
+      --target-password     - Password for Login at Target Repository
+ 
+ 
+Usage: pma2docker <version|help>
+ 
+List additional information abaout this tool
+```
+
 ## The manual process
 
 ### Normal pull-push of images
@@ -40,7 +79,7 @@ Thats it! No magic, just code!
 ## Examples
 
 Simple usage with source and target repo would just copy the source to the target by downloading each architecture as one image, rebuild manifest list and push it to target server:
-```
+```bash
 pma2docker dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
 ```
 This command would create the following target tags:
@@ -51,7 +90,7 @@ This command would create the following target tags:
 
 
 Download multi-arch image and split it to single images with corresponding suffix and upload them seperately to the target repository. Note that dobernoeder/helloworld has three architectures (amd64, arm64, armv7)
-```
+```bash
 pma2docker -s dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
 ```
 This command would create the following target tags:
@@ -61,7 +100,7 @@ This command would create the following target tags:
 
 
 To transfer an image from a public repository to an secured target repository, use the `--target-user` and `--target-password` parameter. If just adding `--target-user` you will get prompted for login password during the process (Not recommended for build pipelines). 
-```
+```bash
 pma2docker --target-user johndoe --target-password mypassword dobernoeder/helloworld:latest dobernoeder/newplace:1.1.1
 ```
 
@@ -70,14 +109,14 @@ You do not need to specify any credentials if your local docker instance is alre
 
 
 You maybe want to download a multiarch image only and split it into its single images and push only one architecture by hand to a repository. So you can prepare the single images in your local repository:
-```
+```bash
 pma2docker --pull-split dobernoeder/helloworld:latest
 ```
 Afterwards you do have all single images in your local docker instance. Use *docker image ls* to list them and *docker push* to push the single image to your target repository by hand. 
 
 
 If you would like to include only specific architectures in your target multi-arch to save space on your target server, you might want to use this command:
-```
+```bash
 pma2docker --only-arch "amd64,armv7"
 ```
 You can choose out of these list to combine several architectures. You just need to seperate them by a ","
@@ -85,8 +124,37 @@ You can choose out of these list to combine several architectures. You just need
 This is the official supported list of architectures oriented at the docker tags most images use. You might do have other architecture types in your image manifest lists which should also work as long as you specify them correct on the `--only-arch` parameter.
 
 If you want to store the multiarch image or single images of it to your disk, you would need the following call
-```
+```bash
 pma2docker --only-arch "armv7,arm64" --only-single-arch --extract /home/myuser/imagedir dobernoeder/helloworld:latest
 ```
 This stores two files as \*.tar.gz in the folder `/home/myuser/imagedir/, one for each architecture. The name cannot be specified by command line and is *image-$arch.tar.gz*, for example image-amd64.tar.gz for x86_64 architecture.
 **Note**: The export of multi architecture images to a file is currently not supported by this tool. The parameter --only-single-arch gets activated automatically when you set the --extract option.
+
+You can merge several single images with this command to one multi-arch image:
+
+```bash
+pma2docker --merge-push type=image,path=dobernoeder/helloworld:latest-amd64,arch=amd64 \
+           --merge-push type=image,path=dobernoeder/helloworld:latest-arm64,arch=arm64 \
+           --merge-push type=image,path=dobernoeder/helloworld:latest-armv7,arch=armv7 \
+           dobernoeder/helloworld:0.9.1
+```
+
+**Note:** Please note that this feature is experimental
+
+It is possible to read single images from a local *.tar.gz file. It must be compliant to the OCI specification. You then get it as combined multiarch image to your target repository. Please specify the image files also with the --merge-push parameter and notice the additional *name=* statement in the parameter specification:
+
+```bash
+pma2docker --merge-push type=image,name=dobernoeder/helloworld:latest-amd64,path=./docker-image.tar.gz,arch=amd64 \
+           --merge-push type=image,name=dobernoeder/helloworld:latest-arm64,path=./docker-image.tar.gz,arch=arm64 \
+           --merge-push type=image,name=dobernoeder/helloworld:latest-armv7,path=./docker-image.tar.gz, arch=armv7 \            
+           dobernoeder/helloworld:0.9.1
+```
+
+**Note:** Please note that this feature is experimental
+
+To cleanup your system after downloading the necessary images, you can specify the `--cleanup`Parameter since version 1.3.0
+
+``` 
+pma2docker --cleanup dobernoeder/helloworld:latest dobernoeder/helloworld:0.9.1
+```
+

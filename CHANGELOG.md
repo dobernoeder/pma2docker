@@ -2,6 +2,19 @@
 Documentation of changes
 
 
+## [1.3.0] - 2021-09-01
+### Added
+- Added Parameter to read only single images from repository
+- Added experimental mode to read single images from *.tar.gz and push it to repository as multi-arch manifest
+- Added function to combine several local single images and push them to your target repostory including multi-arch manifest
+- Added cleanup option to remove created manifests and downloaded images from your local disk
+
+### Changed
+- Huge code cleanup
+- Better overview in usage dialog
+- Better handling for modes which only need a Source or Target repository but not booth
+
+
 ## [1.2.0] - 2021-08-25
 ### Added
 - Added Pull-Split feature to download multiarch image and split with suffix only
@@ -37,7 +50,8 @@ Released first version
 
 ## [Original Project]
 The original project can be found at: [github.com](https://github.com/dobernoeder/pma2docker)
-[1.2.0] https://github.com/dobernoeder/pma2docker/compare/1.2.0...master
-[1.1.0] https://github.com/dobernoeder/pma2docker/compare/1.0.0...1.2.0
+[UPCOMING] https://github.com/dobernoeder/pma2docker/compare/1.3.0...master
+[1.3.0] https://github.com/dobernoeder/pma2docker/compare/1.2.0...1.3.0
+[1.2.0] https://github.com/dobernoeder/pma2docker/compare/1.1.0...1.2.0
 [1.1.0] https://github.com/dobernoeder/pma2docker/compare/1.0.0...1.1.0
 [1.0.0] https://github.com/dobernoeder/pma2docker/commits/1.0.0
