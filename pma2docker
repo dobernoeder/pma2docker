@@ -464,7 +464,7 @@ function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
   echo " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-    createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+    createMultiArchImage "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
     if [[ -z $EXTRACT_PATH ]]; then
       pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
     fi;

@@ -1,6 +1,9 @@
 # Changelog
 Documentation of changes
 
+## [1.3.1] - 2021-09-01
+###Changed
+- Fixed: Problem with call for creation of multiarch image led to single arch image with first architecture in list
 
 ## [1.3.0] - 2021-09-01
 ### Added
