@@ -50,6 +50,7 @@ function usage(){
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
+  echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <SOURCE_IMAGE>"
@@ -61,6 +62,7 @@ function usage(){
   echo "  -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere"
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
+  echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <TARGET_IMAGE>"
@@ -71,6 +73,7 @@ function usage(){
   echo '                              Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
+  echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
   echo " "
   echo " "
   echo "Usage: pma2docker <version|help>"
@@ -198,15 +201,12 @@ function validateArch(){
     if [[ $a    == "linux/riscv64"  ]]; then a="riscv64" ; fi;
     if [[ $a    == "linux/s390x"    ]]; then a="s390x"   ; fi;
 
-    if [[ $arch == $a ]]; then match="1"; fi
+    if [[ "$arch" == "$a" ]]; then match="1"; break; fi
   done
 
-  if [[ $match == "1" ]]; then
+  if [[ "$match" == "1" ]]; then
     logMe $LOG_VERBOSE "Architecture matching default architecture list. Arch is $arch"
     return 0
-  else
-    logMe $LOG_WARNING "Architecture is not a value from default architecture list. This may could cause problems."
-    return 1
   fi;
 }
 
@@ -223,7 +223,7 @@ function validateAdjustImageTag(){
     logMe $LOG_INFO "It looks like you did not specify a tag on target file. Asume 'latest' as tag."
     TARGET_IMAGE="$TARGET_IMAGE:latest"
   else
-    logMe $LOG_VERBOSE "Target Image is fully qulified with tag: $SOURCE_IMAGE"
+    logMe $LOG_VERBOSE "Target Image is fully qulified with tag: $TARGET_IMAGE"
   fi
 }
 
@@ -237,13 +237,6 @@ function checkAndGetNrOfManifestsInManifestList(){
     exit 1
   else
     logMe $LOG_VERBOSE "Docker Image Manifest for Source is valid, manifest contains $NR_OF_MANIFESTS images."
-  fi
-
-  if [ $NR_OF_MANIFESTS -eq 0 ]; then
-    logMe $LOG_ERROR "It looks like the Source Docker-Image is not suitable for this action.\nPlease provide an existing multi architecture image. You can only copy existing multi-arch images!"
-    exit 1
-  else
-    logMe $LOG_VERBOSE "Docker Image Manifest for Target is valid, manifest contains $NR_OF_MANIFESTS images."
   fi
 }
 
@@ -262,7 +255,7 @@ function checkImageIsDocker(){
     SOURCE_IMAGE="docker.io/"$SOURCE_IMAGE
   fi
   if [[ $TARGET_IS_DOCKER = "1" ]] && [[ $(echo $TARGET_IMAGE | grep "docker.io" | wc -l) == "0" ]]; then
-    logMe $LOG_VERBOSE "Recognized Target Image as a image at docker hub. Add 'docker.io' as Prefix for Source Image"
+    logMe $LOG_VERBOSE "Recognized Target Image as a image at docker hub. Add 'docker.io' as Prefix for Target Image"
     TARGET_IMAGE="docker.io/"$TARGET_IMAGE
   fi
 }
@@ -495,7 +488,7 @@ function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
   logMe $LOG_INFO " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-    createMultiArchImage $TARGET_IMAGE $LIST_OF_PLATFORM_IMAGES
+    createMultiArchImage "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
     if [[ -z $EXTRACT_PATH ]]; then
       pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
     fi;
@@ -513,7 +506,6 @@ function cleanup(){
   logMe $LOG_INFO "Delete Images..."
   docker image rm $DEL_IMAGES
 }
-
 
 ## START OF PROCESS ##
 dependencyCheck
@@ -540,7 +532,9 @@ for arg in "$@"; do
   || [[ "$arg" == "-m" ]];                        then setPgmMode $TARGET_MODE; NEXT_ITEM="--merge-push"; continue; fi;
   if [[ "$arg" == "--cleanup" ]] \
   || [[ "$arg" == "-c" ]];                        then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); CLEANUP=1; continue; fi;
+  if [[ "$arg" == "--log-level" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-level"; continue; fi;
   if [[ $cnt -le $(( "$PARM_CNT" - $NON_FLAG_CNT )) ]]; then
+    if [[ "$NEXT_ITEM" == "--log-level" ]];         then setLogLevel "$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
