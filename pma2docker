@@ -51,6 +51,7 @@ function usage(){
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
+  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <SOURCE_IMAGE>"
@@ -63,6 +64,7 @@ function usage(){
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
+  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <TARGET_IMAGE>"
@@ -74,6 +76,7 @@ function usage(){
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
+  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
   echo " "
   echo " "
   echo "Usage: pma2docker <version|help>"
@@ -391,20 +394,20 @@ function importImage(){
 }
 
 function pullImage(){
-  logMe $LOG_INFO "Pull image..."
+  logMe $LOG_INFO "Pulling Image $1 ..."
   docker pull "$1"
   if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to pull image for architecture $arch. Abort process..."; exit 1; fi
   DEL_IMAGES="$DEL_IMAGES"" ""$1"
 }
 
 function pushImage(){
-  logMe $LOG_INFO "Pushing Image to docker ..."
+  logMe $LOG_INFO "Pushing Image $1 to target repository ..."
   docker push "$1"
   if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to push $1. Abort process..."; exit 1; fi
 }
 
 function pushManifest(){
-  logMe $LOG_INFO "Pushing Manifest to Docker"
+  logMe $LOG_INFO "Pushing Manifest $1 to target repository ..."
   docker manifest push "$1"
   if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to push Manifest for $1. Abort process..."; exit 1; fi
 }
@@ -533,8 +536,10 @@ for arg in "$@"; do
   if [[ "$arg" == "--cleanup" ]] \
   || [[ "$arg" == "-c" ]];                        then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); CLEANUP=1; continue; fi;
   if [[ "$arg" == "--log-level" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-level"; continue; fi;
+  if [[ "$arg" == "--log-mode" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-mode"; continue; fi;
   if [[ $cnt -le $(( "$PARM_CNT" - $NON_FLAG_CNT )) ]]; then
     if [[ "$NEXT_ITEM" == "--log-level" ]];         then setLogLevel "$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--log-mode" ]];         then setLogMode "$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
