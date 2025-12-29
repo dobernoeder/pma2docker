@@ -15,7 +15,7 @@ PGM_MODE="$NOT_INITIALIZED_MODE"
 NON_FLAG_CNT=2
 PGM_SETBY=""
 PARM_CNT="$#"
-VERSION=1.4.0
+VERSION=1.5.0
 MAINTAINER="David Obernöder"
 ONLY_SINGLE_IMAGES=0
 ONLY_PULL_SPLIT=0
@@ -27,6 +27,7 @@ SOURCE_PASSWORD=""
 TARGET_SERVER=""
 TARGET_USER=""
 TARGET_PASSWORD=""
+TAG_SUFFIX=""
 LIST_OF_PLATFORM_IMAGES=""
 LIST_OF_ARCHS=""
 NR_OF_MANIFESTS=""
@@ -50,6 +51,7 @@ function usage(){
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
+  echo "      --suffix              - Append a suffix to the Target Tag"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
   echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
   echo " "
@@ -75,6 +77,7 @@ function usage(){
   echo '                              Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"'
   echo "      --target-user         - Username for Login at Target Repository"
   echo "      --target-password     - Password for Login at Target Repository"
+  echo "      --suffix              - Append a suffix to the Target Tag"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
   echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
   echo " "
@@ -86,7 +89,7 @@ function usage(){
 }
 
 function version(){
-  logMe $LOG_CUSTOM "v.$VERSION\nMaintainer: $MAINTAINER" "pma2docker"
+  logMe $LOG_VERBOSE "v.$VERSION  -- Maintainer: $MAINTAINER" "pma2docker"
 }
 
 function setPgmMode(){
@@ -157,6 +160,7 @@ function setPgmMode(){
 }
 
 function dependencyCheck(){
+  logMe $LOG_INFO "Run dependency check..."
   # Check installed tools: bash, jq, docker
   bash --version > /dev/null 2>&1   || { logMe $LOG_ERROR "Dependency 'bash' is not installed. Please make sure that 'bash' ist installed and configured properly"; exit 1; }
   jq --version > /dev/null 2>&1     || { logMe $LOG_ERROR "Dependency 'jq' is not installed. Please make sure that 'jq' ist installed and configured properly"; exit 1; }
@@ -192,6 +196,7 @@ function validateArch(){
   local IFS=$','
   local match="0"
 
+  logMe $LOG_VERBOSE "Architecture list checking..."
   for a in $LIST_OF_ARCHS;
   do
     if [[ $a    == "linux/amd64"    ]]; then a="amd64"   ; fi;
@@ -232,7 +237,13 @@ function validateAdjustImageTag(){
 
 function checkAndGetNrOfManifestsInManifestList(){
   # Check for Manifests in Image
+  logMe $LOG_INFO "Run Inspect on Image $SOURCE_IMAGE"
   NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length') > /dev/null 2>&1
+  logMe $LOG_VERBOSE "Got $NR_OF_MANIFESTS manifests from image"
+  if [[ $NR_OF_MANIFESTS -eq '0' ]]; then
+    logMe $LOG_VERBOSE "Assume a single architecture image"
+  fi
+
 
   re='^[0-9]+$'
   if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
@@ -248,6 +259,7 @@ function checkImageIsDocker(){
   # Check if source images are Docker Images or Images from a custom repository
   docker_creds=$(cat ~/.docker/config.json | jq ".auths | keys" | grep -v "\[" | grep -v "\]" | tr -d ' ' | tr -d ',' | tr -d '"' | sed 's/https:\/\///g' | cut -d'/' -f1)
 
+  logMe $LOG_VERBOSE "Checking Source and Target Images..."
   docker manifest inspect "docker.io/"$SOURCE_IMAGE > /dev/null 2>&1
   SOURCE_IS_DOCKER=$(test $? -eq 0 && echo "1" || echo "0")
   docker manifest inspect "docker.io/"$TARGET_IMAGE > /dev/null 2>&1
@@ -261,16 +273,19 @@ function checkImageIsDocker(){
     logMe $LOG_VERBOSE "Recognized Target Image as a image at docker hub. Add 'docker.io' as Prefix for Target Image"
     TARGET_IMAGE="docker.io/"$TARGET_IMAGE
   fi
+  logMe $LOG_VERBOSE "Source-Image is $SOURCE_IMAGE"
+  logMe $LOG_VERBOSE "Target-Image is $TARGET_IMAGE (may append arch tag or suffix later!)"
 }
 
 
 function checkExistingCredentials(){
   # Check if we do have credentials for source and target repository
   SOURCE_CREDS=0
+  logMe $LOG_VERBOSE "Check Docker Credentials for the source repositories"
   for cred in $docker_creds;
   do
     if [[ $SOURCE_IMAGE  =~ .*$cred.* ]] || [[ $cred =~ .*docker\.io.* ]]; then
-      logMe $LOG_VERBOSE "Found entry for login credentials on Source Server, try to connect with them"
+      logMe $LOG_INFO "Found entry for login credentials on Source Server, try to connect with them"
       SOURCE_CREDS=1
       break;
     fi
@@ -280,7 +295,7 @@ function checkExistingCredentials(){
   for cred in $docker_creds;
   do
     if [[ $TARGET_IMAGE =~ .*$cred.* ]] || [[ $SOURCE_IMAGE =~ .*docker\.io.* ]]; then
-      logMe $LOG_VERBOSE "Found entry for login credentials on Target Server, try to connect with them"
+      logMe $LOG_INFO "Found entry for login credentials on Target Server, try to connect with them"
       TARGET_CREDS=1
       break;
     fi
@@ -336,6 +351,7 @@ function prepareSingleImage(){
    local isImage="0"
    local isOci="0"
 
+   logMe $LOG_VERBOSE "Perparing Single-Image-Tags"
    if [[ $(echo $arg | grep -E "^type=image,path=.*,arch=.*$" | wc -l) -eq "1" ]]; then isImage="1"; fi
    if [[ $(echo $arg | grep -E "^type=oci,name=.*,path=.*,arch=.*$" | wc -l) -eq "1" ]]; then isOci="1"; fi
 
@@ -417,32 +433,70 @@ function saveImage(){
   docker save -o $EXTRACT_PATH"/image-$arch.tar.gz" "$1"
 }
 
+function getHostArch(){
+architecture=""
+  case $(uname -m) in
+      s390x)   architecture="s390x" ;;
+      x86_64)  architecture="amd64" ;;
+      arm64)   architecture="arm64" ;;
+  esac
+}
+
 function createMultiArchImage(){
   local image="$1"
   local platforms="$2"
+  local checkImage=""
 
+  logMe $LOG_VERBOSE "Run inspect on Image $image"
+  #checkImage=$(docker manifest inspect $image | jq '.manifests | length') > /dev/null 2>&1
   check=$(docker manifest inspect "$image")
-
+  echo ">>> DEBUG1"
   if [ $? -eq "0" ]; then
     docker manifest rm "$image"  2>/dev/null
   fi
+  echo ">>> DEBUG2"
+  logMe $LOG_VERBOSE "Create manifest for Image $image and Plattform $platform"
+  echo ">>> DEBUG3"
   docker manifest create $image $platforms
   if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
   DEL_MANIFESTS="$DEL_MANIFESTS"" ""$1"
 }
 
+#function analyzeSourceManifest(){
+#  # Get Information for Manifest
+#  if [[ "$NR_OF_MANIFESTS" -eq "0" ]]; then
+#    manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
+#  else
+#   manifest=$(docker manifest inspect dobernoeder/helloworld  | jq '.layers[0]')
+#  fi
+#  digest=$(echo $manifest | jq -r '.digest')
+#  arch=$(echo $manifest | jq -r '.platform.architecture')
+#  logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
+#
+#  # Check if we have a variant for an architecture, for example arm/v7
+#  if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
+#    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+#  fi
+#}
+
 function analyzeSourceManifest(){
   # Get Information for Manifest
-  manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
-  digest=$(echo $manifest | jq -r '.digest')
-  arch=$(echo $manifest | jq -r '.platform.architecture')
-  logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
-
-  # Check if we have a variant for an architecture, for example arm/v7
-  if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
-    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+  if [[ "$NR_OF_MANIFESTS" -eq "0" ]]; then
+    manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
+    getHostArch
+    arch="$architecture"
+  else
+    manifest=$(docker manifest inspect dobernoeder/helloworld  | jq '.layers[0]')
+    arch=$(echo $manifest | jq -r '.platform.architecture')
+    # Check if we have a variant for an architecture, for example arm/v7
+    if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
+      arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+    fi
   fi
+  digest=$(echo $manifest | jq -r '.digest')
+  logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
 }
+
 
 function getSingleImages(){
 
@@ -462,11 +516,17 @@ function getSingleImages(){
 }
 
 function copyMultiArchToLocal(){
+  # If NR_OF_IMAGES is zero, no multiarch image, so assume local arch and set it to one
+  if [[ $NR_OF_MANIFESTS -eq "0" ]]; then
+    #getHostArch
+    LIST_OF_PLATFORM_IMAGES="$architecture"
+    NR_OF_MANIFESTS=1
+  fi
   # Cycle through all Manifests in the manifest of the Manifest-List
   for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
   do
     analyzeSourceManifest
-    PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
+    PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch""-""$TAG_SUFFIX"
     if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
       logMe $LOG_INFO " $arch ---------------------------------------------------------------------------------------"
       pullImage "$SOURCE_IMAGE""@""$digest"
@@ -490,13 +550,14 @@ function copyMultiArchToLocal(){
 function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
   logMe $LOG_INFO " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
+   echo ">>> DEBUG: oSI = $ONLY_SINGLE_IMAGES  -- oPS = $ONLY_PULL_SPLIT"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
     createMultiArchImage "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
     if [[ -z $EXTRACT_PATH ]]; then
       pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
     fi;
   else
-    logMe $LOG_WARNING "--> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
+    logMe $LOG_WARNING ">>> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
     if [[ ! -z $EXTRACT_PATH ]]; then
       logMe $LOG_WARNING "Export of multi architecture images to files is currently not supported. The option --only-single-images is activated automatically when setting --extract parameter!"
     fi
@@ -507,10 +568,13 @@ function cleanup(){
   logMe $LOG_INFO "Delete Manifests..."
   docker manifest rm $DEL_MANIFESTS 2>/dev/null
   logMe $LOG_INFO "Delete Images..."
-  docker image rm $DEL_IMAGES
+  if [[ ! -z "$DEL_IMAGES" ]]; then
+    docker image rm $DEL_IMAGES
+  fi
 }
 
 ## START OF PROCESS ##
+version
 dependencyCheck
 
 # Parameter handling
@@ -535,11 +599,13 @@ for arg in "$@"; do
   || [[ "$arg" == "-m" ]];                        then setPgmMode $TARGET_MODE; NEXT_ITEM="--merge-push"; continue; fi;
   if [[ "$arg" == "--cleanup" ]] \
   || [[ "$arg" == "-c" ]];                        then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); CLEANUP=1; continue; fi;
+  if [[ "$arg" == "--suffix" ]];                  then setPgmMode $(($NORMAL_MODE+$SOURCE_MDOE+$TARGET_MODE)); NEXT_ITEM="--suffix"; continue; fi;
   if [[ "$arg" == "--log-level" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-level"; continue; fi;
   if [[ "$arg" == "--log-mode" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-mode"; continue; fi;
   if [[ $cnt -le $(( "$PARM_CNT" - $NON_FLAG_CNT )) ]]; then
     if [[ "$NEXT_ITEM" == "--log-level" ]];         then setLogLevel "$arg"; NEXT_ITEM=""; continue; fi
-    if [[ "$NEXT_ITEM" == "--log-mode" ]];         then setLogMode "$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--log-mode" ]];          then setLogMode "$arg"; NEXT_ITEM=""; continue; fi
+    if [[ "$NEXT_ITEM" == "--suffix" ]];            then TAG_SUFFIX="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--target-user" ]];       then TARGET_USER="$arg"; NEXT_ITEM=""; continue; fi
