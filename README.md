@@ -12,6 +12,9 @@ Options:
       --source-password     - Password for Login at Source Repository
       --target-user         - Username for Login at Target Repository
       --target-password     - Password for Login at Target Repository
+      --suffix              - Append a suffix to the Target Tag
+      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)
+      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment
  
  
 Usage: pma2docker [options] <SOURCE_IMAGE>
@@ -23,6 +26,8 @@ Options:
   -p, --pull-split          - Only download the image from Source Repository and add suffix without pushing it somewhere
       --source-user         - Username for Login at Source Repository
       --source-password     - Password for Login at Source Repository
+      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)
+      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment
  
  
 Usage: pma2docker [options] <TARGET_IMAGE>
@@ -33,6 +38,9 @@ Options:
                               Use this form: --merge-push "type=(oci|image),path=<(repository_path>|<path_to_tar.gz>),arch=<arch_of_single-image>"
       --target-user         - Username for Login at Target Repository
       --target-password     - Password for Login at Target Repository
+      --suffix              - Append a suffix to the Target Tag
+      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)
+      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment
  
  
 Usage: pma2docker <version|help>
@@ -158,3 +166,8 @@ To cleanup your system after downloading the necessary images, you can specify t
 pma2docker --cleanup dobernoeder/helloworld:latest dobernoeder/helloworld:0.9.1
 ```
 
+You need more freedom? You can add a custom suffix to the uploaded images like this:
+```
+pma2docker --suffix 2025-12-01 dobernoeder/helloworld:1.0.1e dobernoeder/helloworld:1.0.1f
+```
+You'll get images like dobernoeder/helloworld:1.0.1f-2025-12-01, dobernoeder/helloworld:1.0.1f-amd64-2025-12-01, obernoeder/helloworld:1.0.1f-arm64-2025-12-01 and so on, when you push your images.
