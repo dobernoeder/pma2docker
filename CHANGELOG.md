@@ -1,6 +1,14 @@
 # Changelog
 Documentation of changes
 
+## [1.5.1] - 2025-12-30
+### Added
+- NEW: Check for LogMod under /usr/local/lib
+
+### Changed
+- BUGFIX: When no suffix was set, single images and some multi arch images had a trailing '-'
+
+
 ## [1.5.0] - 2025-12-30
 ### Added
 - NEW: Support for image suffix, for example with date or build hashes

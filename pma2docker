@@ -1,7 +1,14 @@
 #!/bin/bash
 
 # Import Library
-. lib/logMod/logMod
+if [[ -e "lib/logMod/logMod" ]]; then
+  . lib/logMod/logMod
+elif [[ -e "/usr/local/lib/usr/logMond/logMod" ]]; then
+  . /usr/local/lib/usr/logMond/logMod
+else
+  echo "ERROR: Dependency for tool 'LogMod' not installed. Exit..."
+  exit 1
+fi
 
 # Supported Program Modes
 NOT_INITIALIZED_MODE="-1"
@@ -502,7 +509,11 @@ function copyMultiArchToLocal(){
   for (( c=0; c<$NR_OF_MANIFESTS; c++ ));
   do
     analyzeSourceManifest
-    PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch""-""$TAG_SUFFIX"
+    if [[ "$TAG_SUFFIX" == "" ]]; then
+      PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch"
+    else
+      PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch""-""$TAG_SUFFIX"
+    fi
     if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
       logMe $LOG_INFO " $arch ---------------------------------------------------------------------------------------"
       pullImage "$SOURCE_IMAGE""@""$digest"
@@ -527,9 +538,17 @@ function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
   logMe $LOG_INFO " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-    createMultiArchImage "$TARGET_IMAGE""-""$TAG_SUFFIX" "$LIST_OF_PLATFORM_IMAGES"
+    if [[ "$TAG_SUFFIX" == "" ]]; then
+      createMultiArchImage "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
+    else
+      createMultiArchImage "$TARGET_IMAGE""-""$TAG_SUFFIX" "$LIST_OF_PLATFORM_IMAGES"
+    fi
     if [[ -z $EXTRACT_PATH ]]; then
-      pushManifest "$TARGET_IMAGE""-""$TAG_SUFFIX" "'""$LIST_OF_PLATFORM_IMAGES""'"
+      if [[ "$TAG_SUFFIX" == "" ]]; then
+        pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
+      else
+        pushManifest "$TARGET_IMAGE""-""$TAG_SUFFIX" "'""$LIST_OF_PLATFORM_IMAGES""'"
+      fi
     fi;
   else
     logMe $LOG_WARNING ">>> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
