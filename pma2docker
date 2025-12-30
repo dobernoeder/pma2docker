@@ -3,8 +3,8 @@
 # Import Library
 if [[ -e "lib/logMod/logMod" ]]; then
   . lib/logMod/logMod
-elif [[ -e "/usr/local/lib/usr/logMond/logMod" ]]; then
-  . /usr/local/lib/usr/logMond/logMod
+elif [[ -e "/usr/local/lib/logMod/logMod" ]]; then
+  . /usr/local/lib/logMod/logMod
 else
   echo "ERROR: Dependency for tool 'LogMod' not installed. Exit..."
   exit 1
