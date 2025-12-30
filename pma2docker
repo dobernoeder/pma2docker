@@ -53,7 +53,7 @@ function usage(){
   echo "      --target-password     - Password for Login at Target Repository"
   echo "      --suffix              - Append a suffix to the Target Tag"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
-  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
+  echo "      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <SOURCE_IMAGE>"
@@ -66,7 +66,7 @@ function usage(){
   echo "      --source-user         - Username for Login at Source Repository"
   echo "      --source-password     - Password for Login at Source Repository"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
-  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
+  echo "      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment"
   echo " "
   echo " "
   echo "Usage: pma2docker [options] <TARGET_IMAGE>"
@@ -79,7 +79,7 @@ function usage(){
   echo "      --target-password     - Password for Login at Target Repository"
   echo "      --suffix              - Append a suffix to the Target Tag"
   echo "      --log-level           - Set a log level: 0=FATAL,1=ERROR,2=WARNING,4=INFO,64=CUSTOM,128=VERBOSE - default: 71 (=0+1+2+4+64)"
-  echo "      --log-mode            - Set the output format for log messages: 0=plain|1=simple|2=modern"
+  echo "      --log-disable-label   - Disable colorful state labels on the left, useful in CI/CD environment"
   echo " "
   echo " "
   echo "Usage: pma2docker <version|help>"
@@ -239,15 +239,18 @@ function checkAndGetNrOfManifestsInManifestList(){
   # Check for Manifests in Image
   logMe $LOG_INFO "Run Inspect on Image $SOURCE_IMAGE"
   NR_OF_MANIFESTS=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests | length') > /dev/null 2>&1
-  logMe $LOG_VERBOSE "Got $NR_OF_MANIFESTS manifests from image"
+  logMe $LOG_INFO "Got $NR_OF_MANIFESTS manifests from image"
   if [[ $NR_OF_MANIFESTS -eq '0' ]]; then
     logMe $LOG_VERBOSE "Assume a single architecture image"
   fi
 
 
   re='^[0-9]+$'
-  if ! [[ $NR_OF_MANIFESTS =~ $re ]] ; then
+  if ! [[ $NR_OF_MANIFESTS =~ $re ]]; then
     logMe $LOG_ERROR "It looks like the Source Docker-Image is not suitable for this action.\nIt either does not exist or there was an error checking the provided Image."
+    exit 1
+  elif [[ "$NR_OF_MANIFESTS" -eq "0" ]]; then
+    logMe $LOG_ERROR "It looks like the Source Docker-Image is not suitable for this action.\nPlease provide an existing multi architecture image. You can only copy existing multi-arch images!"
     exit 1
   else
     logMe $LOG_VERBOSE "Docker Image Manifest for Source is valid, manifest contains $NR_OF_MANIFESTS images."
@@ -448,55 +451,28 @@ function createMultiArchImage(){
   local checkImage=""
 
   logMe $LOG_VERBOSE "Run inspect on Image $image"
-  #checkImage=$(docker manifest inspect $image | jq '.manifests | length') > /dev/null 2>&1
   check=$(docker manifest inspect "$image")
-  echo ">>> DEBUG1"
   if [ $? -eq "0" ]; then
     docker manifest rm "$image"  2>/dev/null
   fi
-  echo ">>> DEBUG2"
-  logMe $LOG_VERBOSE "Create manifest for Image $image and Plattform $platform"
-  echo ">>> DEBUG3"
+  logMe $LOG_VERBOSE "Create manifest for Image $image and Platform $platform"
   docker manifest create $image $platforms
   if [[ ! $? -eq 0 ]]; then logMe $LOG_ERROR "Unable to create manifest for multi-arch image. Abort process..."; exit 1; fi
   DEL_MANIFESTS="$DEL_MANIFESTS"" ""$1"
 }
 
-#function analyzeSourceManifest(){
-#  # Get Information for Manifest
-#  if [[ "$NR_OF_MANIFESTS" -eq "0" ]]; then
-#    manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
-#  else
-#   manifest=$(docker manifest inspect dobernoeder/helloworld  | jq '.layers[0]')
-#  fi
-#  digest=$(echo $manifest | jq -r '.digest')
-#  arch=$(echo $manifest | jq -r '.platform.architecture')
-#  logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
-#
-#  # Check if we have a variant for an architecture, for example arm/v7
-#  if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
-#    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
-#  fi
-#}
-
 function analyzeSourceManifest(){
   # Get Information for Manifest
-  if [[ "$NR_OF_MANIFESTS" -eq "0" ]]; then
-    manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
-    getHostArch
-    arch="$architecture"
-  else
-    manifest=$(docker manifest inspect dobernoeder/helloworld  | jq '.layers[0]')
-    arch=$(echo $manifest | jq -r '.platform.architecture')
-    # Check if we have a variant for an architecture, for example arm/v7
-    if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
-      arch="$arch"$(echo $manifest | jq -r '.platform.variant')
-    fi
-  fi
+  manifest=$(docker manifest inspect $SOURCE_IMAGE | jq '.manifests'["${c}"])
   digest=$(echo $manifest | jq -r '.digest')
+  arch=$(echo $manifest | jq -r '.platform.architecture')
   logMe $LOG_VERBOSE "Analysed Source Image Manifest with $arch and fingerprint $digest"
-}
 
+  # Check if we have a variant for an architecture, for example arm/v7
+  if [[ $(echo $manifest | jq -r '.platform.variant') != "null" ]]; then
+    arch="$arch"$(echo $manifest | jq -r '.platform.variant')
+  fi
+}
 
 function getSingleImages(){
 
@@ -550,11 +526,10 @@ function copyMultiArchToLocal(){
 function multiArchUpload(){
   # Check for existing manifest and delete it before creating new one, if Multi-Arch-Push is not deactivated
   logMe $LOG_INFO " MULTI-ARCH Creation & Upload --------------------------------------------------------------------"
-   echo ">>> DEBUG: oSI = $ONLY_SINGLE_IMAGES  -- oPS = $ONLY_PULL_SPLIT"
   if [[ "$ONLY_SINGLE_IMAGES" -eq "0" ]] && [[ "$ONLY_PULL_SPLIT" -eq "0" ]]; then
-    createMultiArchImage "$TARGET_IMAGE" "$LIST_OF_PLATFORM_IMAGES"
+    createMultiArchImage "$TARGET_IMAGE""-""$TAG_SUFFIX" "$LIST_OF_PLATFORM_IMAGES"
     if [[ -z $EXTRACT_PATH ]]; then
-      pushManifest "$TARGET_IMAGE" "'""$LIST_OF_PLATFORM_IMAGES""'"
+      pushManifest "$TARGET_IMAGE""-""$TAG_SUFFIX" "'""$LIST_OF_PLATFORM_IMAGES""'"
     fi;
   else
     logMe $LOG_WARNING ">>> SKIP Multi-Architecture Creation & Upload due to Parameter --only-single-images or --pull-split is set"
@@ -574,8 +549,6 @@ function cleanup(){
 }
 
 ## START OF PROCESS ##
-version
-dependencyCheck
 
 # Parameter handling
 cnt=0
@@ -583,6 +556,7 @@ for arg in "$@"; do
   cnt=$(( $cnt+1 ))
   if [[ "$arg" == "--version" ]];                 then setPgmMode $INFO_MODE;                     version; exit; fi;
   if [[ "$arg" == "--help" ]];                    then setPgmMode $INFO_MODE;                     usage;   exit; fi;
+  if [[ "$arg" == "--log-disable-label" ]];       then disableLabel 1; continue; fi;
   if [[ "$arg" == "--source-user" ]];             then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE)); NEXT_ITEM="--source-user"; continue; fi;
   if [[ "$arg" == "--source-password" ]];         then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE)); NEXT_ITEM="--source-password"; continue; fi;
   if [[ "$arg" == "--target-user" ]];             then setPgmMode $(($NORMAL_MODE+$TARGET_MODE)); NEXT_ITEM="--target-user"; continue; fi;
@@ -601,10 +575,8 @@ for arg in "$@"; do
   || [[ "$arg" == "-c" ]];                        then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); CLEANUP=1; continue; fi;
   if [[ "$arg" == "--suffix" ]];                  then setPgmMode $(($NORMAL_MODE+$SOURCE_MDOE+$TARGET_MODE)); NEXT_ITEM="--suffix"; continue; fi;
   if [[ "$arg" == "--log-level" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-level"; continue; fi;
-  if [[ "$arg" == "--log-mode" ]];               then setPgmMode $(($NORMAL_MODE+$SOURCE_MODE+$TARGET_MODE)); NEXT_ITEM="--log-mode"; continue; fi;
   if [[ $cnt -le $(( "$PARM_CNT" - $NON_FLAG_CNT )) ]]; then
     if [[ "$NEXT_ITEM" == "--log-level" ]];         then setLogLevel "$arg"; NEXT_ITEM=""; continue; fi
-    if [[ "$NEXT_ITEM" == "--log-mode" ]];          then setLogMode "$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--suffix" ]];            then TAG_SUFFIX="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-user" ]];       then SOURCE_USER="$arg"; NEXT_ITEM=""; continue; fi
     if [[ "$NEXT_ITEM" == "--source-password" ]];   then SOURCE_PASSWORD="$arg"; NEXT_ITEM=""; continue; fi
@@ -629,6 +601,9 @@ for arg in "$@"; do
   usage
   exit 1
 done
+
+version
+dependencyCheck
 
 if [[ "$PGM_MODE" = "$TARGET_MODE" ]]; then
   logMe $LOG_VERBOSE "Entering Target Image mode"
