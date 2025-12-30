@@ -514,7 +514,7 @@ function copyMultiArchToLocal(){
     else
       PLATFORM_TARGET_IMAGE="$TARGET_IMAGE""-""$arch""-""$TAG_SUFFIX"
     fi
-    if [ ! -z "$arch" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
+    if [ ! -z "$arch" ] && [ "$arch" != "unknown" ] && [ ! -z "$digest" ] && ( validateArch || [ -z "$LIST_OF_ARCHS" ] ); then
       logMe $LOG_INFO " $arch ---------------------------------------------------------------------------------------"
       pullImage "$SOURCE_IMAGE""@""$digest"
       tagImage  "$SOURCE_IMAGE""@""$digest" "$PLATFORM_TARGET_IMAGE"
